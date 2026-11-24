@@ -1,0 +1,2216 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+  <meta name="theme-color" content="#0f172a" />
+  <meta name="description" content="Track monthly electricity meter readings, free unit allowance, daily pace, and bill projections with Google Sheets cloud sync." />
+  <meta name="mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+  <meta name="apple-mobile-web-app-title" content="Electricity Tracker" />
+
+  <!-- Static PWA Manifest & Meter Icons (Relative paths for GitHub Pages) -->
+  <link rel="manifest" href="./manifest.json" />
+  <link rel="icon" type="image/png" sizes="192x192" href="./icon-192.png" />
+  <link rel="apple-touch-icon" href="./icon-192.png" />
+
+  <title>Monthly Electricity Tracker — Free Unit Guard</title>
+
+  <!-- Crisp Inter Font -->
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet" />
+
+  <!-- Tailwind CSS v3 CDN -->
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script>
+    tailwind.config = {
+      darkMode: 'class',
+      theme: {
+        extend: {
+          fontFamily: {
+            sans: ['Inter', 'system-ui', '-apple-system', 'sans-serif'],
+          },
+          colors: {
+            brand: {
+              50: '#ecfeff',
+              100: '#cffafe',
+              400: '#22d3ee',
+              500: '#06b6d4',
+              600: '#0891b2',
+              700: '#0e7490',
+            }
+          }
+        }
+      }
+    };
+  </script>
+
+  <style>
+    .tabular-nums {
+      font-variant-numeric: tabular-nums;
+    }
+
+    ::-webkit-scrollbar {
+      width: 6px;
+      height: 6px;
+    }
+    ::-webkit-scrollbar-thumb {
+      background: rgba(148, 163, 184, 0.4);
+      border-radius: 9999px;
+    }
+
+    .progress-fill {
+      transition: width 0.55s cubic-bezier(0.22, 1, 0.36, 1), background-color 0.3s ease;
+    }
+
+    .gauge-arc-fill {
+      transition: stroke-dashoffset 0.7s cubic-bezier(0.22, 1, 0.36, 1);
+    }
+
+    .safe-bottom {
+      padding-bottom: max(1.5rem, env(safe-area-inset-bottom));
+    }
+
+    .hero-glow-safe {
+      background: radial-gradient(circle at top right, rgba(6, 182, 212, 0.11), rgba(16, 185, 129, 0.05) 35%, transparent 65%);
+    }
+    .hero-glow-watchlist {
+      background: radial-gradient(circle at top right, rgba(245, 158, 11, 0.14), transparent 60%);
+    }
+    .hero-glow-exceeded {
+      background: radial-gradient(circle at top right, rgba(244, 63, 94, 0.15), transparent 60%);
+    }
+
+    @keyframes pulse-soft {
+      0%, 100% { opacity: 1; }
+      50% { opacity: 0.45; }
+    }
+    .animate-pulse-soft {
+      animation: pulse-soft 1.4s ease-in-out infinite;
+    }
+  </style>
+</head>
+<body class="min-h-screen bg-slate-50 text-slate-900 dark:bg-[#060c17] dark:text-slate-100 antialiased selection:bg-cyan-500/20 selection:text-cyan-700 dark:selection:text-cyan-300">
+  <div id="app" class="min-h-screen flex flex-col">
+
+    <!-- Top Sticky Glass Header -->
+    <header class="sticky top-0 z-30 backdrop-blur-lg bg-white/85 dark:bg-slate-900/85 border-b border-slate-200/80 dark:border-slate-800/80">
+      <div class="max-w-3xl mx-auto px-4 sm:px-6 h-16 flex items-center justify-between gap-2">
+        <!-- Brand Meter Logo & Title -->
+        <div class="flex items-center gap-2.5 min-w-0">
+          <img
+            src="./icon-192.png"
+            alt="Monthly Electricity Tracker Logo"
+            class="w-10 h-10 rounded-xl shadow-md shadow-cyan-900/20 shrink-0 ring-1 ring-slate-200/70 dark:ring-cyan-400/25"
+          />
+          <div class="min-w-0">
+            <h1 class="text-sm sm:text-base font-extrabold tracking-tight leading-tight truncate">
+              <span>Monthly</span>
+              <span class="bg-gradient-to-r from-sky-600 to-emerald-600 dark:from-cyan-400 dark:to-emerald-400 bg-clip-text text-transparent"> Electricity Tracker</span>
+            </h1>
+            <p class="text-[11px] text-slate-500 dark:text-slate-400 leading-tight truncate">
+              Smart kWh &amp; Free Unit Guard
+            </p>
+          </div>
+        </div>
+
+        <!-- Header Actions -->
+        <div class="flex items-center gap-1.5 shrink-0">
+          <!-- Install PWA Button (shown automatically when installable) -->
+          <button
+            id="btnInstallPwa"
+            type="button"
+            class="hidden items-center gap-1 px-2.5 py-2 rounded-xl text-xs font-semibold bg-gradient-to-r from-sky-600 to-emerald-600 hover:from-sky-700 hover:to-emerald-700 text-white shadow-sm transition active:scale-[0.98] cursor-pointer"
+            title="Install Monthly Electricity Tracker"
+          >
+            <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" stroke-width="2.3" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" d="M4 16v2a2 2 0 002 2h12a2 2 0 002-2v-2M7 10l5 5m0 0l5-5m-5 5V4" />
+            </svg>
+            <span class="hidden sm:inline">Install</span>
+          </button>
+
+          <!-- Cloud Sync Status Pill -->
+          <button
+            id="btnSyncNow"
+            type="button"
+            class="inline-flex items-center gap-1.5 px-2.5 py-2 rounded-xl text-xs font-semibold bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-600 dark:text-slate-300 transition active:scale-[0.98] cursor-pointer"
+            title="Cloud Sync Status — Click to sync or configure"
+          >
+            <span id="syncDot" class="w-2 h-2 rounded-full bg-slate-400"></span>
+            <span id="syncStatusText" class="inline">Local</span>
+          </button>
+
+          <!-- Settings -->
+          <button
+            id="btnOpenSettings"
+            type="button"
+            class="inline-flex items-center gap-1.5 px-2.5 sm:px-3 py-2 rounded-xl text-xs sm:text-sm font-semibold bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 transition active:scale-[0.98] cursor-pointer"
+            aria-label="Configure Billing Cycle and Cloud Sync"
+          >
+            <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24" aria-hidden="true">
+              <path stroke-linecap="round" stroke-linejoin="round" d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" />
+              <path stroke-linecap="round" stroke-linejoin="round" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+            </svg>
+            <span class="hidden sm:inline">Settings</span>
+          </button>
+
+          <!-- Theme Toggle -->
+          <button
+            id="btnThemeToggle"
+            type="button"
+            class="p-2 rounded-xl bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-600 dark:text-slate-300 transition active:scale-[0.98] cursor-pointer"
+            aria-label="Toggle Dark or Light Mode"
+            title="Toggle theme"
+          >
+            <svg id="iconSun" class="w-4 h-4 hidden" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" d="M12 3v1m0 16v1m9-9h-1M4 12H3m15.364 6.364l-.707-.707M6.343 6.343l-.707-.707m12.728 0l-.707.707M6.343 17.657l-.707.707M16 12a4 4 0 11-8 0 4 4 0 018 0z" />
+            </svg>
+            <svg id="iconMoon" class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" d="M20.354 15.354A9 9 0 018.646 3.646 9.003 9.003 0 0012 21a9.003 9.003 0 008.354-5.646z" />
+            </svg>
+          </button>
+        </div>
+      </div>
+    </header>
+
+    <!-- Toast Banner -->
+    <div id="toastBanner" class="max-w-3xl w-full mx-auto px-4 sm:px-6 pt-3 hidden" role="status" aria-live="polite">
+      <div id="toastInner" class="rounded-2xl px-4 py-3 text-sm font-medium flex items-center justify-between gap-3 border shadow-sm">
+        <span id="toastMessage"></span>
+        <button id="toastClose" type="button" class="text-xs opacity-75 hover:opacity-100 font-semibold px-1.5 py-0.5 cursor-pointer">Dismiss</button>
+      </div>
+    </div>
+
+    <!-- Main Container -->
+    <main class="flex-1 max-w-3xl w-full mx-auto px-4 sm:px-6 py-5 space-y-5">
+
+      <!-- First-Time Setup Callout (Shown only when no readings exist yet) -->
+      <section id="emptyOnboardingBanner" class="hidden rounded-3xl bg-gradient-to-br from-sky-600 via-cyan-600 to-emerald-600 text-white p-5 sm:p-6 shadow-lg shadow-cyan-900/20">
+        <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+          <div class="space-y-1">
+            <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-[11px] font-bold uppercase tracking-wider bg-white/20">
+              Ready to Start
+            </span>
+            <h2 class="text-lg font-extrabold tracking-tight">Log your last bill reading or connect Google Sheets</h2>
+            <p class="text-xs sm:text-sm text-cyan-50/95 leading-relaxed">
+              Enter your previous official bill reading as <strong>Bill Generated (New Cycle)</strong> below, or link your Google Sheet in Settings to load your saved history.
+            </p>
+          </div>
+          <button
+            id="btnBannerCloudSetup"
+            type="button"
+            class="shrink-0 px-4 py-2.5 rounded-xl bg-white text-slate-900 hover:bg-cyan-50 font-bold text-xs sm:text-sm shadow-sm transition cursor-pointer"
+          >
+            Connect Google Sheet
+          </button>
+        </div>
+      </section>
+
+      <!-- 1. Hero Status & Circular Meter Gauge Card -->
+      <section id="statusHeroCard" class="rounded-3xl bg-white dark:bg-slate-900/90 border border-slate-200/90 dark:border-slate-800 p-5 sm:p-6 shadow-sm hero-glow-safe">
+        <div class="flex flex-wrap items-center justify-between gap-2 mb-5">
+          <div class="flex items-center gap-2 flex-wrap">
+            <span id="statusBadge" class="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-bold tracking-wide uppercase bg-emerald-100 text-emerald-800 dark:bg-emerald-950/80 dark:text-emerald-300">
+              <span id="statusDot" class="w-2 h-2 rounded-full bg-emerald-500"></span>
+              <span id="statusLabel">Safe</span>
+            </span>
+            <span id="cyclePeriodText" class="text-xs sm:text-sm text-slate-500 dark:text-slate-400 font-medium"></span>
+          </div>
+          <span id="daysRemainingPill" class="text-xs font-semibold px-2.5 py-1 rounded-xl bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 tabular-nums"></span>
+        </div>
+
+        <!-- Circular Meter Dial + Remaining Free Units Readout -->
+        <div class="grid grid-cols-1 sm:grid-cols-12 gap-5 items-center mb-5">
+          <!-- Interactive Circular Meter Dial -->
+          <div class="sm:col-span-5 flex justify-center">
+            <div class="relative w-44 h-40 flex items-center justify-center">
+              <svg id="heroGaugeSvg" viewBox="0 0 200 180" class="w-full h-full overflow-visible" role="img" aria-label="Monthly electricity consumption dial">
+                <defs>
+                  <linearGradient id="gaugeGradSafe" x1="0%" y1="100%" x2="100%" y2="0%">
+                    <stop offset="0%" stop-color="#0ea5e9" />
+                    <stop offset="55%" stop-color="#22d3ee" />
+                    <stop offset="100%" stop-color="#10b981" />
+                  </linearGradient>
+                  <linearGradient id="gaugeGradWatch" x1="0%" y1="100%" x2="100%" y2="0%">
+                    <stop offset="0%" stop-color="#f59e0b" />
+                    <stop offset="100%" stop-color="#fb923c" />
+                  </linearGradient>
+                  <linearGradient id="gaugeGradOver" x1="0%" y1="100%" x2="100%" y2="0%">
+                    <stop offset="0%" stop-color="#f43f5e" />
+                    <stop offset="100%" stop-color="#e11d48" />
+                  </linearGradient>
+                </defs>
+                <!-- Subtle radial tick marks (populated by JS) -->
+                <g id="gaugeTicksGroup"></g>
+                <!-- Background Track Arc (260 deg sweep) -->
+                <path
+                  id="gaugeTrackPath"
+                  fill="none"
+                  stroke="currentColor"
+                  class="text-slate-200 dark:text-slate-800"
+                  stroke-width="14"
+                  stroke-linecap="round"
+                />
+                <!-- Active Filled Arc -->
+                <path
+                  id="gaugeValuePath"
+                  fill="none"
+                  stroke="url(#gaugeGradSafe)"
+                  stroke-width="14"
+                  stroke-linecap="round"
+                  class="gauge-arc-fill"
+                />
+                <!-- Center Readout -->
+                <text x="100" y="96" text-anchor="middle" id="gaugeCenterVal" class="fill-slate-900 dark:fill-cyan-300 font-extrabold tabular-nums" font-size="30">0.0</text>
+                <text x="100" y="116" text-anchor="middle" class="fill-slate-500 dark:fill-slate-400 font-semibold" font-size="11.5">kWh used</text>
+                <text x="100" y="150" text-anchor="middle" id="gaugeCenterPct" class="fill-slate-500 dark:fill-slate-400 font-bold tabular-nums" font-size="11">0% of free limit</text>
+              </svg>
+            </div>
+          </div>
+
+          <!-- Primary Headline Allowance Stats -->
+          <div class="sm:col-span-7 space-y-3 text-center sm:text-left">
+            <div>
+              <p class="text-xs font-semibold uppercase tracking-wider text-slate-500 dark:text-slate-400" id="allowanceHeadlineLabel">
+                Remaining Free Units
+              </p>
+              <div class="flex items-baseline justify-center sm:justify-start gap-2 mt-1">
+                <span id="remainingOrExcessValue" class="text-4xl sm:text-5xl font-extrabold tracking-tight tabular-nums text-emerald-600 dark:text-emerald-400">
+                  200.0
+                </span>
+                <span id="remainingOrExcessUnit" class="text-sm sm:text-base font-semibold text-slate-500 dark:text-slate-400">
+                  / 200 kWh free
+                </span>
+              </div>
+            </div>
+
+            <div class="pt-2 border-t border-slate-100 dark:border-slate-800/90 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-1 text-xs">
+              <span class="text-slate-500 dark:text-slate-400 font-medium">
+                Consumed: <strong id="consumedUnitsValue" class="text-slate-800 dark:text-slate-100 tabular-nums">0.0</strong> kWh
+              </span>
+              <span id="latestMeterSummary" class="text-slate-500 dark:text-slate-400 tabular-nums"></span>
+            </div>
+          </div>
+        </div>
+
+        <!-- Linear Progress Bar with Cycle Time-Elapsed Marker -->
+        <div class="space-y-2">
+          <div class="flex justify-between text-xs font-semibold tabular-nums">
+            <span id="progressLeftLabel" class="text-slate-600 dark:text-slate-300">0% of free allowance used</span>
+            <span id="progressRightLabel" class="text-slate-500 dark:text-slate-400">0.0 / 200 units</span>
+          </div>
+          <div class="relative w-full h-3.5 rounded-full bg-slate-100 dark:bg-slate-800 overflow-hidden p-0.5">
+            <div id="allowanceProgressBar" class="progress-fill h-full rounded-full bg-gradient-to-r from-sky-500 to-emerald-500" style="width: 0%"></div>
+            <div id="cycleTimeMarker" class="hidden absolute top-0 bottom-0 w-0.5 bg-slate-900/40 dark:bg-white/55 pointer-events-none" title="Cycle time elapsed"></div>
+          </div>
+          <div class="flex justify-between text-[11px] text-slate-400 dark:text-slate-500 tabular-nums">
+            <span id="timeElapsedLabel">Cycle timeline: 0% elapsed</span>
+            <span id="paceVsBudgetTag"></span>
+          </div>
+        </div>
+
+        <!-- Contextual Advice Strip -->
+        <p id="statusAdviceText" class="mt-4 text-xs sm:text-sm text-slate-600 dark:text-slate-300 bg-slate-50/90 dark:bg-slate-800/60 rounded-2xl px-4 py-3 border border-slate-200/70 dark:border-slate-700/60 leading-relaxed"></p>
+      </section>
+
+      <!-- 2. Daily Pace & Projection Metrics -->
+      <section aria-labelledby="paceHeading" class="space-y-3">
+        <div class="flex items-center justify-between px-1">
+          <h2 id="paceHeading" class="text-xs font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400">
+            Daily Pace &amp; Bill Projection
+          </h2>
+          <span id="billDateLabel" class="text-xs font-medium text-slate-500 dark:text-slate-400 tabular-nums"></span>
+        </div>
+
+        <div class="grid grid-cols-2 sm:grid-cols-4 gap-3">
+          <div class="rounded-2xl bg-white dark:bg-slate-900/90 border border-slate-200/90 dark:border-slate-800 p-4 shadow-sm">
+            <p class="text-[11px] font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">Days Left</p>
+            <p id="metricDaysLeft" class="text-2xl font-extrabold mt-1 tabular-nums">0</p>
+            <p class="text-[11px] text-slate-400 dark:text-slate-500 mt-0.5">until bill date</p>
+          </div>
+
+          <div class="rounded-2xl bg-white dark:bg-slate-900/90 border border-slate-200/90 dark:border-slate-800 p-4 shadow-sm">
+            <p class="text-[11px] font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">Safe Daily Budget</p>
+            <p id="metricSafeDaily" class="text-2xl font-extrabold mt-1 tabular-nums text-emerald-600 dark:text-emerald-400">0.0</p>
+            <p class="text-[11px] text-slate-400 dark:text-slate-500 mt-0.5">free units/day left</p>
+          </div>
+
+          <div class="rounded-2xl bg-white dark:bg-slate-900/90 border border-slate-200/90 dark:border-slate-800 p-4 shadow-sm">
+            <p class="text-[11px] font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">Current Pace</p>
+            <p id="metricCurrentPace" class="text-2xl font-extrabold mt-1 tabular-nums">0.0</p>
+            <p id="metricPaceSub" class="text-[11px] text-slate-400 dark:text-slate-500 mt-0.5">units/day avg</p>
+          </div>
+
+          <div class="rounded-2xl bg-white dark:bg-slate-900/90 border border-slate-200/90 dark:border-slate-800 p-4 shadow-sm">
+            <p class="text-[11px] font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">Projected Total</p>
+            <p id="metricProjectedTotal" class="text-2xl font-extrabold mt-1 tabular-nums">0.0</p>
+            <p id="metricEstBillSub" class="text-[11px] text-slate-400 dark:text-slate-500 mt-0.5 tabular-nums">est. bill: ₹0</p>
+          </div>
+        </div>
+      </section>
+
+      <!-- 3. Manual Meter Reading Logger Card -->
+      <section class="rounded-3xl bg-white dark:bg-slate-900/90 border border-slate-200/90 dark:border-slate-800 p-5 sm:p-6 shadow-sm">
+        <div class="flex flex-wrap items-center justify-between gap-2 mb-4">
+          <div>
+            <h2 id="formHeading" class="text-base sm:text-lg font-bold tracking-tight">Log Meter Reading</h2>
+            <p class="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
+              Enter your kWh reading as a daily check-in or record an official bill generation reading.
+            </p>
+          </div>
+          <span class="text-xs font-semibold px-2.5 py-1 rounded-xl bg-cyan-50 text-cyan-700 dark:bg-cyan-950/70 dark:text-cyan-300 tabular-nums" id="startReadingPill">
+            Baseline: —
+          </span>
+        </div>
+
+        <form id="readingForm" class="space-y-4" novalidate>
+          <input type="hidden" id="editingReadingId" value="" />
+
+          <!-- Reading Type Segmented Control -->
+          <div class="grid grid-cols-2 gap-2 p-1 bg-slate-100 dark:bg-slate-800 rounded-2xl text-xs font-semibold">
+            <label class="flex items-center justify-center gap-1.5 py-2.5 rounded-xl cursor-pointer transition has-[:checked]:bg-white dark:has-[:checked]:bg-slate-900 has-[:checked]:shadow-sm has-[:checked]:text-emerald-600 dark:has-[:checked]:text-emerald-400 text-slate-600 dark:text-slate-400">
+              <input type="radio" name="readingType" value="daily" checked class="sr-only" id="typeDaily" />
+              <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2" /></svg>
+              <span>Daily Check-in</span>
+            </label>
+            <label class="flex items-center justify-center gap-1.5 py-2.5 rounded-xl cursor-pointer transition has-[:checked]:bg-white dark:has-[:checked]:bg-slate-900 has-[:checked]:shadow-sm has-[:checked]:text-sky-600 dark:has-[:checked]:text-cyan-400 text-slate-600 dark:text-slate-400">
+              <input type="radio" name="readingType" value="billed" class="sr-only" id="typeBilled" />
+              <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>
+              <span>Bill Generated (New Cycle)</span>
+            </label>
+          </div>
+
+          <div class="grid grid-cols-1 sm:grid-cols-3 gap-3.5">
+            <div>
+              <label for="readingDate" class="block text-xs font-semibold uppercase tracking-wider text-slate-600 dark:text-slate-300 mb-1.5">
+                Reading Date
+              </label>
+              <input
+                id="readingDate"
+                name="readingDate"
+                type="date"
+                required
+                class="w-full rounded-xl border border-slate-300 dark:border-slate-700 bg-slate-50 dark:bg-slate-800/80 px-3.5 py-2.5 text-sm font-medium focus:outline-none focus:ring-2 focus:ring-cyan-500 focus:border-cyan-500"
+              />
+            </div>
+
+            <div>
+              <label for="readingValue" class="block text-xs font-semibold uppercase tracking-wider text-slate-600 dark:text-slate-300 mb-1.5">
+                Meter Reading (kWh)
+              </label>
+              <input
+                id="readingValue"
+                name="readingValue"
+                type="number"
+                step="0.1"
+                min="0"
+                inputmode="decimal"
+                placeholder="e.g. 1542.5"
+                required
+                class="w-full rounded-xl border border-slate-300 dark:border-slate-700 bg-slate-50 dark:bg-slate-800/80 px-3.5 py-2.5 text-sm font-semibold tabular-nums focus:outline-none focus:ring-2 focus:ring-cyan-500 focus:border-cyan-500"
+              />
+            </div>
+
+            <div>
+              <label for="readingNote" class="block text-xs font-semibold uppercase tracking-wider text-slate-600 dark:text-slate-300 mb-1.5">
+                Note <span class="font-normal lowercase text-slate-400">(optional)</span>
+              </label>
+              <input
+                id="readingNote"
+                name="readingNote"
+                type="text"
+                maxlength="60"
+                placeholder="e.g. AC used, Morning check"
+                class="w-full rounded-xl border border-slate-300 dark:border-slate-700 bg-slate-50 dark:bg-slate-800/80 px-3.5 py-2.5 text-sm font-medium focus:outline-none focus:ring-2 focus:ring-cyan-500 focus:border-cyan-500"
+              />
+            </div>
+          </div>
+
+          <!-- Live Preview Strip -->
+          <div id="liveReadingPreview" class="rounded-2xl bg-slate-50 dark:bg-slate-800/60 border border-slate-200/70 dark:border-slate-700/70 px-4 py-3 flex flex-wrap items-center justify-between gap-2 text-xs">
+            <span class="text-slate-500 dark:text-slate-400">Preview impact:</span>
+            <span id="livePreviewText" class="font-semibold text-slate-700 dark:text-slate-200 tabular-nums">
+              Enter a reading above to preview usage &amp; free units left
+            </span>
+          </div>
+
+          <div class="flex flex-wrap items-center gap-2">
+            <button
+              type="submit"
+              id="btnSaveReading"
+              class="w-full sm:w-auto inline-flex items-center justify-center gap-2 px-6 py-3 rounded-xl bg-gradient-to-r from-sky-600 to-emerald-600 hover:from-sky-700 hover:to-emerald-700 active:scale-[0.99] text-white font-semibold text-sm shadow-sm shadow-cyan-600/25 transition cursor-pointer"
+            >
+              <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2.4" viewBox="0 0 24 24" aria-hidden="true">
+                <path stroke-linecap="round" stroke-linejoin="round" d="M12 4v16m8-8H4" />
+              </svg>
+              <span id="btnSaveText">Save Meter Reading</span>
+            </button>
+
+            <button
+              type="button"
+              id="btnCancelEdit"
+              class="hidden w-full sm:w-auto px-5 py-3 rounded-xl bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 font-semibold text-sm transition cursor-pointer"
+            >
+              Cancel Edit
+            </button>
+          </div>
+        </form>
+      </section>
+
+      <!-- 4. Active Cycle Consumption Curve -->
+      <section id="trendChartSection" class="hidden rounded-3xl bg-white dark:bg-slate-900/90 border border-slate-200/90 dark:border-slate-800 p-5 sm:p-6 shadow-sm space-y-3">
+        <div class="flex items-center justify-between gap-2">
+          <div>
+            <h2 class="text-base font-bold tracking-tight">Active Cycle Consumption Curve</h2>
+            <p class="text-xs text-slate-500 dark:text-slate-400">Cumulative kWh logged vs. your free unit limit.</p>
+          </div>
+          <span id="chartFreeCapLabel" class="text-xs font-semibold text-cyan-600 dark:text-cyan-400 tabular-nums"></span>
+        </div>
+        <div id="cycleChartContainer" class="w-full overflow-hidden rounded-2xl bg-slate-50/70 dark:bg-slate-800/40 border border-slate-200/60 dark:border-slate-800 p-3"></div>
+      </section>
+
+      <!-- 5. Reading History & Backup Controls -->
+      <section class="rounded-3xl bg-white dark:bg-slate-900/90 border border-slate-200/90 dark:border-slate-800 p-5 sm:p-6 shadow-sm space-y-4">
+        <div class="flex flex-wrap items-center justify-between gap-3">
+          <div>
+            <h2 class="text-base sm:text-lg font-bold tracking-tight">Reading History</h2>
+            <p class="text-xs text-slate-500 dark:text-slate-400">
+              Chronological meter logs with accurate per-cycle usage deltas.
+            </p>
+          </div>
+
+          <div class="flex flex-wrap items-center gap-1.5">
+            <div class="inline-flex rounded-xl bg-slate-100 dark:bg-slate-800 p-0.5 text-xs font-semibold mr-1">
+              <button id="btnFilterActive" type="button" class="px-2.5 py-1 rounded-lg bg-white dark:bg-slate-900 text-slate-900 dark:text-white shadow-sm transition cursor-pointer">
+                Current
+              </button>
+              <button id="btnFilterAll" type="button" class="px-2.5 py-1 rounded-lg text-slate-500 dark:text-slate-400 hover:text-slate-800 dark:hover:text-slate-200 transition cursor-pointer">
+                All
+              </button>
+            </div>
+
+            <button
+              id="btnExportCsv"
+              type="button"
+              class="px-3 py-1.5 rounded-xl text-xs font-semibold bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 transition cursor-pointer"
+            >
+              Export CSV
+            </button>
+            <button
+              id="btnExportJson"
+              type="button"
+              class="px-3 py-1.5 rounded-xl text-xs font-semibold bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 transition cursor-pointer"
+            >
+              Backup JSON
+            </button>
+            <button
+              id="btnImportJson"
+              type="button"
+              class="px-3 py-1.5 rounded-xl text-xs font-semibold bg-cyan-50 hover:bg-cyan-100 dark:bg-cyan-950/60 dark:hover:bg-cyan-900/60 text-cyan-700 dark:text-cyan-300 transition cursor-pointer"
+            >
+              Import JSON
+            </button>
+            <input id="importJsonFile" type="file" accept="application/json,.json" class="hidden" />
+          </div>
+        </div>
+
+        <div id="historyList" class="divide-y divide-slate-100 dark:divide-slate-800"></div>
+      </section>
+
+      <!-- 6. Completed Billing Cycles & Month-over-Month Comparison -->
+      <section class="rounded-3xl bg-white dark:bg-slate-900/90 border border-slate-200/90 dark:border-slate-800 p-5 sm:p-6 shadow-sm space-y-4">
+        <div class="flex flex-wrap items-center justify-between gap-2">
+          <div>
+            <h2 class="text-base sm:text-lg font-bold tracking-tight">Past Billing Cycles &amp; Comparison</h2>
+            <p class="text-xs text-slate-500 dark:text-slate-400">
+              Archived automatically whenever you log a new <strong>Bill Generated</strong> reading.
+            </p>
+          </div>
+          <span id="cycleCountBadge" class="px-2.5 py-1 rounded-xl text-xs font-semibold bg-cyan-50 text-cyan-700 dark:bg-cyan-950 dark:text-cyan-300 tabular-nums">
+            0 Completed Cycles
+          </span>
+        </div>
+
+        <div id="pastCyclesContainer" class="space-y-4"></div>
+      </section>
+    </main>
+
+    <!-- Footer -->
+    <footer class="max-w-3xl w-full mx-auto px-4 sm:px-6 pt-4 safe-bottom text-center text-xs text-slate-400 dark:text-slate-500">
+      <span id="footerSyncSummary">Cached locally for instant offline access. Connect Google Sheets in Settings for cloud backup &amp; multi-device sync.</span>
+    </footer>
+  </div>
+
+  <!-- Settings & Cloud Sync Modal -->
+  <div id="settingsModal" class="fixed inset-0 z-50 hidden items-center justify-center p-4 bg-slate-950/65 backdrop-blur-sm" role="dialog" aria-modal="true" aria-labelledby="settingsModalTitle">
+    <div class="w-full max-w-lg rounded-3xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 shadow-2xl max-h-[90vh] overflow-y-auto p-5 sm:p-6">
+      <div class="flex items-center justify-between pb-4 border-b border-slate-100 dark:border-slate-800">
+        <div>
+          <h2 id="settingsModalTitle" class="text-lg font-bold">Settings &amp; Cloud Sync</h2>
+          <p class="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
+            Configure billing rules, tariff estimates, and Google Sheets database sync.
+          </p>
+        </div>
+        <button id="btnCloseSettings" type="button" class="p-2 rounded-xl hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-500 cursor-pointer" aria-label="Close settings">
+          <svg class="w-5 h-5" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12" />
+          </svg>
+        </button>
+      </div>
+
+      <form id="settingsForm" class="mt-4 space-y-5">
+        <!-- Billing Cycle Settings -->
+        <div class="space-y-3">
+          <p class="text-xs font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400">
+            Billing Cycle &amp; Free Allowance
+          </p>
+          <div class="grid grid-cols-1 sm:grid-cols-3 gap-3">
+            <div>
+              <label for="cfgBillDate" class="block text-xs font-semibold text-slate-600 dark:text-slate-300 mb-1">
+                Next Target Bill Date
+              </label>
+              <input id="cfgBillDate" type="date" required class="w-full rounded-xl border border-slate-300 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 px-3 py-2 text-sm font-medium" />
+            </div>
+
+            <div>
+              <label for="cfgBillDay" class="block text-xs font-semibold text-slate-600 dark:text-slate-300 mb-1">
+                Usual Bill Day (1-28)
+              </label>
+              <input id="cfgBillDay" type="number" min="1" max="28" step="1" required class="w-full rounded-xl border border-slate-300 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 px-3 py-2 text-sm font-semibold tabular-nums" />
+            </div>
+
+            <div>
+              <label for="cfgFreeUnits" class="block text-xs font-semibold text-slate-600 dark:text-slate-300 mb-1">
+                Free Unit Limit (kWh)
+              </label>
+              <input id="cfgFreeUnits" type="number" step="1" min="0" required class="w-full rounded-xl border border-slate-300 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 px-3 py-2 text-sm font-semibold tabular-nums" />
+            </div>
+          </div>
+        </div>
+
+        <!-- Tariff Estimator -->
+        <div class="pt-4 border-t border-slate-100 dark:border-slate-800 space-y-3">
+          <p class="text-xs font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400">
+            Bill Cost Estimator
+          </p>
+          <div class="grid grid-cols-1 sm:grid-cols-3 gap-3">
+            <div>
+              <label for="cfgCurrency" class="block text-xs font-semibold text-slate-600 dark:text-slate-300 mb-1">
+                Currency Symbol
+              </label>
+              <input id="cfgCurrency" type="text" maxlength="4" class="w-full rounded-xl border border-slate-300 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 px-3 py-2 text-sm font-semibold" />
+            </div>
+
+            <div>
+              <label for="cfgRateAboveFree" class="block text-xs font-semibold text-slate-600 dark:text-slate-300 mb-1">
+                Rate / Unit (kWh)
+              </label>
+              <input id="cfgRateAboveFree" type="number" step="0.05" min="0" class="w-full rounded-xl border border-slate-300 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 px-3 py-2 text-sm font-semibold tabular-nums" />
+            </div>
+
+            <div>
+              <label for="cfgFixedCharge" class="block text-xs font-semibold text-slate-600 dark:text-slate-300 mb-1">
+                Fixed Charge
+              </label>
+              <input id="cfgFixedCharge" type="number" step="1" min="0" class="w-full rounded-xl border border-slate-300 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 px-3 py-2 text-sm font-semibold tabular-nums" />
+            </div>
+          </div>
+
+          <label class="flex items-start gap-2.5 pt-1 cursor-pointer select-none">
+            <input id="cfgBillAllOnExceed" type="checkbox" class="mt-0.5 rounded border-slate-300 text-cyan-600 focus:ring-cyan-500" />
+            <span class="text-xs text-slate-600 dark:text-slate-300 leading-relaxed">
+              <strong>Bill all units if free limit is exceeded</strong> (uncheck if only excess units above the free quota are billed).
+            </span>
+          </label>
+        </div>
+
+        <!-- Google Sheets Cloud Database -->
+        <div class="pt-4 border-t border-slate-100 dark:border-slate-800 space-y-3">
+          <div class="flex items-center justify-between">
+            <p class="text-xs font-bold uppercase tracking-wider text-cyan-600 dark:text-cyan-400">
+              Google Sheets Cloud Database
+            </p>
+            <span id="modalCloudBadge" class="text-[11px] font-semibold px-2 py-0.5 rounded-md bg-slate-100 dark:bg-slate-800 text-slate-500">
+              Not connected
+            </span>
+          </div>
+
+          <div>
+            <label for="cfgScriptUrl" class="block text-xs font-semibold text-slate-600 dark:text-slate-300 mb-1">
+              Apps Script Web App URL
+            </label>
+            <input
+              id="cfgScriptUrl"
+              type="url"
+              placeholder="https://script.google.com/macros/s/.../exec"
+              class="w-full rounded-xl border border-slate-300 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 px-3 py-2 text-xs font-mono"
+            />
+          </div>
+
+          <div>
+            <label for="cfgSyncSecret" class="block text-xs font-semibold text-slate-600 dark:text-slate-300 mb-1">
+              Sync Secret / PIN <span class="font-normal text-slate-400">(optional, must match Code.gs)</span>
+            </label>
+            <input
+              id="cfgSyncSecret"
+              type="password"
+              autocomplete="off"
+              placeholder="Leave blank if SYNC_SECRET is empty in Code.gs"
+              class="w-full rounded-xl border border-slate-300 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 px-3 py-2 text-xs font-mono"
+            />
+          </div>
+
+          <div class="flex flex-wrap gap-2 pt-1">
+            <button
+              id="btnPullCloud"
+              type="button"
+              class="px-3.5 py-2 rounded-xl text-xs font-semibold bg-sky-50 hover:bg-sky-100 dark:bg-sky-950/60 dark:hover:bg-sky-900/60 text-sky-700 dark:text-sky-300 transition cursor-pointer"
+            >
+              Pull from Cloud
+            </button>
+            <button
+              id="btnPushCloud"
+              type="button"
+              class="px-3.5 py-2 rounded-xl text-xs font-semibold bg-emerald-50 hover:bg-emerald-100 dark:bg-emerald-950/60 dark:hover:bg-emerald-900/60 text-emerald-700 dark:text-emerald-300 transition cursor-pointer"
+            >
+              Push Local to Cloud
+            </button>
+          </div>
+        </div>
+
+        <div class="flex items-center justify-end gap-2 pt-3 border-t border-slate-100 dark:border-slate-800">
+          <button id="btnCancelSettings" type="button" class="px-4 py-2.5 rounded-xl text-sm font-semibold bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 transition cursor-pointer">
+            Cancel
+          </button>
+          <button type="submit" class="px-5 py-2.5 rounded-xl text-sm font-semibold bg-gradient-to-r from-sky-600 to-emerald-600 hover:from-sky-700 hover:to-emerald-700 text-white shadow-sm transition cursor-pointer">
+            Save Configuration
+          </button>
+        </div>
+
+        <div class="pt-1">
+          <p class="text-[11px] leading-relaxed text-slate-500 dark:text-slate-400">
+            <strong>PWA Install:</strong> On Android Chrome/Edge tap the <strong>Install</strong> button (or browser menu &rarr; Add to Home screen). On iPhone Safari tap <strong>Share &rarr; Add to Home Screen</strong>.
+          </p>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- Application Logic -->
+  <script>
+    (function () {
+      'use strict';
+
+      const STORAGE_KEY = 'electricity_tracker_state_v1';
+      const CLOUD_KEY = 'electricity_tracker_cloud_v1';
+      const THEME_KEY = 'electricity_tracker_theme_v1';
+
+      let historyFilter = 'current';
+      let deferredInstallPrompt = null;
+      let isSyncing = false;
+      let gaugeArcLength = 0;
+
+      // ---------- Date & Math Helpers ----------
+      function formatISODate(date) {
+        const y = date.getFullYear();
+        const m = String(date.getMonth() + 1).padStart(2, '0');
+        const d = String(date.getDate()).padStart(2, '0');
+        return `${y}-${m}-${d}`;
+      }
+
+      function parseLocalDate(isoDateStr) {
+        if (!isoDateStr || !/^\d{4}-\d{2}-\d{2}$/.test(isoDateStr)) return null;
+        const [y, m, d] = isoDateStr.split('-').map(Number);
+        return new Date(y, m - 1, d);
+      }
+
+      function diffDays(dateA, dateB) {
+        const msPerDay = 1000 * 60 * 60 * 24;
+        const utcA = Date.UTC(dateA.getFullYear(), dateA.getMonth(), dateA.getDate());
+        const utcB = Date.UTC(dateB.getFullYear(), dateB.getMonth(), dateB.getDate());
+        return Math.round((utcB - utcA) / msPerDay);
+      }
+
+      function formatPrettyDate(isoDateStr) {
+        const dt = parseLocalDate(isoDateStr);
+        if (!dt) return isoDateStr || '—';
+        return dt.toLocaleDateString(undefined, { day: 'numeric', month: 'short', year: 'numeric' });
+      }
+
+      function getNextBillDate(fromIsoDateStr, billDay) {
+        const day = Math.min(28, Math.max(1, parseInt(billDay, 10) || 9));
+        const dt = parseLocalDate(fromIsoDateStr) || new Date();
+        let year = dt.getFullYear();
+        let month = dt.getMonth();
+        if (dt.getDate() >= day) {
+          month += 1;
+          if (month > 11) {
+            month = 0;
+            year += 1;
+          }
+        }
+        return formatISODate(new Date(year, month, day));
+      }
+
+      function round1(num) {
+        return Math.round((Number(num) + Number.EPSILON) * 10) / 10;
+      }
+
+      function escapeHtml(str) {
+        return String(str || '')
+          .replace(/&/g, '&amp;')
+          .replace(/</g, '&lt;')
+          .replace(/>/g, '&gt;')
+          .replace(/"/g, '&quot;')
+          .replace(/'/g, '&#39;');
+      }
+
+      // ---------- Circular Meter Gauge Geometry ----------
+      function polarToCartesian(cx, cy, r, angleDeg) {
+        const rad = (angleDeg * Math.PI) / 180;
+        return { x: cx + r * Math.cos(rad), y: cy + r * Math.sin(rad) };
+      }
+
+      function describeArc(cx, cy, r, startAngle, endAngle) {
+        const start = polarToCartesian(cx, cy, r, startAngle);
+        const end = polarToCartesian(cx, cy, r, endAngle);
+        const largeArcFlag = (endAngle - startAngle) > 180 ? 1 : 0;
+        return `M ${start.x.toFixed(2)} ${start.y.toFixed(2)} A ${r} ${r} 0 ${largeArcFlag} 1 ${end.x.toFixed(2)} ${end.y.toFixed(2)}`;
+      }
+
+      function initHeroGaugeGeometry() {
+        const cx = 100, cy = 100, r = 74;
+        const startDeg = 140;
+        const endDeg = 400; // 260-degree meter arc
+        const d = describeArc(cx, cy, r, startDeg, endDeg);
+
+        const track = document.getElementById('gaugeTrackPath');
+        const valPath = document.getElementById('gaugeValuePath');
+        track.setAttribute('d', d);
+        valPath.setAttribute('d', d);
+
+        gaugeArcLength = valPath.getTotalLength();
+        valPath.style.strokeDasharray = `${gaugeArcLength}`;
+        valPath.style.strokeDashoffset = `${gaugeArcLength}`;
+
+        // Render 21 crisp radial tick marks inside the gauge
+        const ticksGroup = document.getElementById('gaugeTicksGroup');
+        let ticksHtml = '';
+        const tickCount = 21;
+        for (let i = 0; i < tickCount; i++) {
+          const frac = i / (tickCount - 1);
+          const ang = startDeg + (endDeg - startDeg) * frac;
+          const isMajor = i % 5 === 0;
+          const pOuter = polarToCartesian(cx, cy, 60, ang);
+          const pInner = polarToCartesian(cx, cy, isMajor ? 51 : 55, ang);
+          ticksHtml += `<line x1="${pInner.x.toFixed(1)}" y1="${pInner.y.toFixed(1)}" x2="${pOuter.x.toFixed(1)}" y2="${pOuter.y.toFixed(1)}" stroke="currentColor" class="${isMajor ? 'text-slate-400/75 dark:text-slate-500' : 'text-slate-300/70 dark:text-slate-700'}" stroke-width="${isMajor ? '2' : '1.3'}" stroke-linecap="round" />`;
+        }
+        ticksGroup.innerHTML = ticksHtml;
+      }
+
+      function updateHeroGauge(consumedUnits, freeLimit, status) {
+        const valPath = document.getElementById('gaugeValuePath');
+        const centerVal = document.getElementById('gaugeCenterVal');
+        const centerPct = document.getElementById('gaugeCenterPct');
+
+        const pctRaw = freeLimit > 0 ? (consumedUnits / freeLimit) : (consumedUnits > 0 ? 1 : 0);
+        const pctClamped = Math.min(1, Math.max(0, pctRaw));
+        const offset = gaugeArcLength * (1 - pctClamped);
+
+        valPath.style.strokeDashoffset = `${offset}`;
+        if (status === 'exceeded') {
+          valPath.setAttribute('stroke', 'url(#gaugeGradOver)');
+          centerVal.setAttribute('class', 'fill-rose-600 dark:fill-rose-400 font-extrabold tabular-nums');
+        } else if (status === 'watchlist') {
+          valPath.setAttribute('stroke', 'url(#gaugeGradWatch)');
+          centerVal.setAttribute('class', 'fill-amber-600 dark:fill-amber-400 font-extrabold tabular-nums');
+        } else {
+          valPath.setAttribute('stroke', 'url(#gaugeGradSafe)');
+          centerVal.setAttribute('class', 'fill-slate-900 dark:fill-cyan-300 font-extrabold tabular-nums');
+        }
+
+        centerVal.textContent = round1(consumedUnits).toFixed(1);
+        const displayPct = Math.round(pctRaw * 100);
+        centerPct.textContent = freeLimit > 0 ? `${displayPct}% of free limit` : 'Metered cycle';
+      }
+
+      // ---------- Clean Empty Default State (No Demo Data) ----------
+      function createEmptyState() {
+        const todayISO = formatISODate(new Date());
+        return {
+          config: {
+            billDate: getNextBillDate(todayISO, 9),
+            billDayOfMonth: 9,
+            freeUnitsLimit: 200,
+            currencySymbol: '₹',
+            rateAboveFree: 6.5,
+            fixedCharge: 75,
+            billAllOnExceed: false
+          },
+          readings: [],
+          updatedAt: ''
+        };
+      }
+
+      function sanitizeState(parsed) {
+        const fallback = createEmptyState();
+        if (!parsed || typeof parsed !== 'object') return fallback;
+        const cfg = parsed.config || {};
+        const billDay = Number.isFinite(Number(cfg.billDayOfMonth))
+          ? Math.min(28, Math.max(1, Math.round(Number(cfg.billDayOfMonth))))
+          : 9;
+
+        return {
+          config: {
+            billDate: (typeof cfg.billDate === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(cfg.billDate))
+              ? cfg.billDate
+              : getNextBillDate(formatISODate(new Date()), billDay),
+            billDayOfMonth: billDay,
+            freeUnitsLimit: Number.isFinite(Number(cfg.freeUnitsLimit))
+              ? Math.max(0, Number(cfg.freeUnitsLimit))
+              : 200,
+            currencySymbol: (typeof cfg.currencySymbol === 'string' && cfg.currencySymbol.trim())
+              ? cfg.currencySymbol.trim()
+              : '₹',
+            rateAboveFree: Number.isFinite(Number(cfg.rateAboveFree))
+              ? Math.max(0, Number(cfg.rateAboveFree))
+              : 0,
+            fixedCharge: Number.isFinite(Number(cfg.fixedCharge))
+              ? Math.max(0, Number(cfg.fixedCharge))
+              : 0,
+            billAllOnExceed: Boolean(cfg.billAllOnExceed)
+          },
+          readings: Array.isArray(parsed.readings)
+            ? parsed.readings
+                .filter((r) => r && typeof r.date === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(r.date) && Number.isFinite(Number(r.value)))
+                .map((r, idx) => ({
+                  id: r.id || `r_${idx}_${Date.now()}`,
+                  date: r.date,
+                  value: Number(r.value),
+                  isBilledBaseline: Boolean(r.isBilledBaseline),
+                  note: typeof r.note === 'string' ? r.note : ''
+                }))
+            : [],
+          updatedAt: typeof parsed.updatedAt === 'string' ? parsed.updatedAt : ''
+        };
+      }
+
+      function loadState() {
+        try {
+          const raw = localStorage.getItem(STORAGE_KEY);
+          if (raw) return sanitizeState(JSON.parse(raw));
+
+          // Seamless migration from earlier versions (skipping old demo sample IDs)
+          for (const legacyKey of ['meterpulse_state_v3', 'meterpulse_state_v2']) {
+            const legacyRaw = localStorage.getItem(legacyKey);
+            if (!legacyRaw) continue;
+            const legacy = JSON.parse(legacyRaw);
+            const hasOnlySampleIds = Array.isArray(legacy?.readings) &&
+              legacy.readings.length > 0 &&
+              legacy.readings.every((r) => String(r.id || '').startsWith('r_s'));
+            if (!hasOnlySampleIds) {
+              return sanitizeState(legacy);
+            }
+          }
+          return createEmptyState();
+        } catch (err) {
+          console.error('Failed to load state:', err);
+          return createEmptyState();
+        }
+      }
+
+      function saveLocalState(state) {
+        try {
+          localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
+        } catch (err) {
+          console.error('Failed to save local state:', err);
+          showToast('Unable to save locally to browser storage.', 'error');
+        }
+      }
+
+      // ---------- Cloud Config & Google Sheets Sync ----------
+      function loadCloudConfig() {
+        try {
+          const raw = localStorage.getItem(CLOUD_KEY) || localStorage.getItem('meterpulse_cloud_v1');
+          if (!raw) return { scriptUrl: '', secret: '', lastSync: '', pendingPush: false };
+          const parsed = JSON.parse(raw);
+          return {
+            scriptUrl: typeof parsed.scriptUrl === 'string' ? parsed.scriptUrl.trim() : '',
+            secret: typeof parsed.secret === 'string' ? parsed.secret : '',
+            lastSync: typeof parsed.lastSync === 'string' ? parsed.lastSync : '',
+            pendingPush: Boolean(parsed.pendingPush)
+          };
+        } catch {
+          return { scriptUrl: '', secret: '', lastSync: '', pendingPush: false };
+        }
+      }
+
+      function saveCloudConfig(cfg) {
+        localStorage.setItem(CLOUD_KEY, JSON.stringify(cfg));
+      }
+
+      function updateSyncUI(statusMode, detailText) {
+        const dot = document.getElementById('syncDot');
+        const label = document.getElementById('syncStatusText');
+        const footer = document.getElementById('footerSyncSummary');
+        const modalBadge = document.getElementById('modalCloudBadge');
+
+        const cloudCfg = loadCloudConfig();
+
+        if (!cloudCfg.scriptUrl) {
+          dot.className = 'w-2 h-2 rounded-full bg-slate-400';
+          label.textContent = 'Local';
+          footer.textContent = 'Saved locally on device. Connect Google Sheets in Settings for cloud backup & multi-device sync.';
+          if (modalBadge) {
+            modalBadge.textContent = 'Not connected';
+            modalBadge.className = 'text-[11px] font-semibold px-2 py-0.5 rounded-md bg-slate-100 dark:bg-slate-800 text-slate-500';
+          }
+          return;
+        }
+
+        if (statusMode === 'syncing') {
+          dot.className = 'w-2 h-2 rounded-full bg-cyan-500 animate-pulse-soft';
+          label.textContent = 'Syncing';
+        } else if (statusMode === 'error' || !navigator.onLine) {
+          dot.className = 'w-2 h-2 rounded-full bg-amber-500';
+          label.textContent = !navigator.onLine ? 'Offline' : 'Pending';
+          footer.textContent = detailText || 'Changes queued locally — will sync to Google Sheets when online.';
+        } else if (cloudCfg.pendingPush) {
+          dot.className = 'w-2 h-2 rounded-full bg-amber-500';
+          label.textContent = 'Pending';
+          footer.textContent = 'Unsynced changes waiting to upload to Google Sheets.';
+        } else {
+          dot.className = 'w-2 h-2 rounded-full bg-emerald-500';
+          label.textContent = 'Synced';
+          const ts = cloudCfg.lastSync
+            ? new Date(cloudCfg.lastSync).toLocaleString(undefined, { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })
+            : 'just now';
+          footer.textContent = `Backed up to Google Sheets · Last synced ${ts}`;
+        }
+
+        if (modalBadge) {
+          modalBadge.textContent = 'Connected';
+          modalBadge.className = 'text-[11px] font-semibold px-2 py-0.5 rounded-md bg-emerald-100 dark:bg-emerald-950 text-emerald-700 dark:text-emerald-300';
+        }
+      }
+
+      async function pushStateToCloud(state, { silent = false } = {}) {
+        const cloudCfg = loadCloudConfig();
+        if (!cloudCfg.scriptUrl) {
+          updateSyncUI('local');
+          return false;
+        }
+
+        cloudCfg.pendingPush = true;
+        saveCloudConfig(cloudCfg);
+
+        if (!navigator.onLine) {
+          updateSyncUI('error', 'Offline — saved on device, will auto-sync to Google Sheets once online.');
+          return false;
+        }
+
+        if (isSyncing) return false;
+        isSyncing = true;
+        updateSyncUI('syncing');
+
+        try {
+          const res = await fetch(cloudCfg.scriptUrl, {
+            method: 'POST',
+            redirect: 'follow',
+            headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+            body: JSON.stringify({
+              action: 'sync',
+              secret: cloudCfg.secret || '',
+              state: state
+            })
+          });
+
+          const data = await res.json();
+          if (!data || !data.ok) {
+            throw new Error(data?.error || 'Sync rejected by Apps Script.');
+          }
+
+          state.updatedAt = data.updatedAt || new Date().toISOString();
+          saveLocalState(state);
+
+          cloudCfg.pendingPush = false;
+          cloudCfg.lastSync = state.updatedAt;
+          saveCloudConfig(cloudCfg);
+          updateSyncUI('synced');
+          if (!silent) showToast('Synced to Google Sheets.', 'success');
+          return true;
+        } catch (err) {
+          console.error('Cloud push failed:', err);
+          updateSyncUI('error', `Cloud sync failed (${err.message}). Kept safely in local storage.`);
+          if (!silent) showToast(`Cloud sync failed: ${err.message}`, 'error');
+          return false;
+        } finally {
+          isSyncing = false;
+        }
+      }
+
+      async function pullStateFromCloud(currentState, { silent = false, forceOverwrite = false } = {}) {
+        const cloudCfg = loadCloudConfig();
+        if (!cloudCfg.scriptUrl) {
+          updateSyncUI('local');
+          return currentState;
+        }
+
+        if (!navigator.onLine) {
+          updateSyncUI('error');
+          return currentState;
+        }
+
+        if (isSyncing) return currentState;
+        isSyncing = true;
+        updateSyncUI('syncing');
+
+        try {
+          const sep = cloudCfg.scriptUrl.includes('?') ? '&' : '?';
+          const url = `${cloudCfg.scriptUrl}${sep}secret=${encodeURIComponent(cloudCfg.secret || '')}&t=${Date.now()}`;
+          const res = await fetch(url, { method: 'GET', redirect: 'follow' });
+          const payload = await res.json();
+
+          if (!payload || !payload.ok) {
+            throw new Error(payload?.error || 'Could not read from Google Sheets.');
+          }
+
+          const remoteData = payload.data || {};
+          const remoteReadings = Array.isArray(remoteData.readings) ? remoteData.readings : [];
+          const hasRemoteConfig = remoteData.config && Object.keys(remoteData.config).length > 0;
+
+          if (forceOverwrite || remoteReadings.length > 0 || hasRemoteConfig) {
+            const merged = sanitizeState({
+              config: hasRemoteConfig ? { ...currentState.config, ...remoteData.config } : currentState.config,
+              readings: remoteReadings,
+              updatedAt: remoteData.updatedAt || new Date().toISOString()
+            });
+            saveLocalState(merged);
+            cloudCfg.lastSync = new Date().toISOString();
+            cloudCfg.pendingPush = false;
+            saveCloudConfig(cloudCfg);
+            updateSyncUI('synced');
+            if (!silent) showToast(`Loaded ${merged.readings.length} readings from Google Sheets.`, 'success');
+            return merged;
+          } else {
+            cloudCfg.lastSync = new Date().toISOString();
+            saveCloudConfig(cloudCfg);
+            updateSyncUI('synced');
+            if (!silent) showToast('Connected! Sheet is empty — push your local data or log a reading.', 'info');
+            return currentState;
+          }
+        } catch (err) {
+          console.error('Cloud pull failed:', err);
+          updateSyncUI('error', `Could not reach Google Sheets (${err.message}).`);
+          if (!silent) showToast(`Cloud pull failed: ${err.message}`, 'error');
+          return currentState;
+        } finally {
+          isSyncing = false;
+        }
+      }
+
+      // ---------- Toast ----------
+      let toastTimer = null;
+      function showToast(message, type = 'info') {
+        const banner = document.getElementById('toastBanner');
+        const inner = document.getElementById('toastInner');
+        const msgEl = document.getElementById('toastMessage');
+
+        msgEl.textContent = message;
+        inner.className = 'rounded-2xl px-4 py-3 text-sm font-medium flex items-center justify-between gap-3 border shadow-sm ';
+
+        if (type === 'success') {
+          inner.className += 'bg-emerald-50 text-emerald-900 border-emerald-200 dark:bg-emerald-950/80 dark:text-emerald-200 dark:border-emerald-800';
+        } else if (type === 'error') {
+          inner.className += 'bg-rose-50 text-rose-900 border-rose-200 dark:bg-rose-950/80 dark:text-rose-200 dark:border-rose-800';
+        } else {
+          inner.className += 'bg-white text-slate-800 border-slate-200 dark:bg-slate-900 dark:text-slate-200 dark:border-slate-700';
+        }
+
+        banner.classList.remove('hidden');
+        if (toastTimer) clearTimeout(toastTimer);
+        toastTimer = setTimeout(() => banner.classList.add('hidden'), 4200);
+      }
+
+      // ---------- Cost Calculation Helper ----------
+      function calculateEstimatedBill(totalUnits, config) {
+        const freeLimit = Math.max(0, config.freeUnitsLimit);
+        const exceeded = Math.max(0, totalUnits - freeLimit);
+        if (exceeded <= 0) return 0;
+        const billableUnits = config.billAllOnExceed ? totalUnits : exceeded;
+        return (billableUnits * config.rateAboveFree) + config.fixedCharge;
+      }
+
+      // ---------- Core Metrics Engine ----------
+      function computeMetrics(state) {
+        const { config, readings } = state;
+        const today = new Date();
+        const todayISO = formatISODate(today);
+
+        const sortedAsc = [...readings].sort((a, b) => {
+          if (a.date !== b.date) return a.date.localeCompare(b.date);
+          if (a.isBilledBaseline !== b.isBilledBaseline) return a.isBilledBaseline ? -1 : 1;
+          return a.value - b.value;
+        });
+
+        const cycleBaselineById = new Map();
+        const deltaById = new Map();
+        let activeBaselineVal = null;
+        for (let i = 0; i < sortedAsc.length; i++) {
+          const r = sortedAsc[i];
+          if (r.isBilledBaseline || activeBaselineVal === null) {
+            activeBaselineVal = r.value;
+          }
+          cycleBaselineById.set(r.id, activeBaselineVal);
+          const prevVal = i === 0 ? r.value : sortedAsc[i - 1].value;
+          deltaById.set(r.id, r.value - prevVal);
+        }
+
+        let baselineIdx = -1;
+        for (let i = sortedAsc.length - 1; i >= 0; i--) {
+          if (sortedAsc[i].isBilledBaseline) {
+            baselineIdx = i;
+            break;
+          }
+        }
+        if (baselineIdx === -1 && sortedAsc.length > 0) {
+          baselineIdx = 0;
+        }
+
+        const baselineReadingObj = baselineIdx >= 0 ? sortedAsc[baselineIdx] : null;
+        const activeCycleReadings = baselineIdx >= 0 ? sortedAsc.slice(baselineIdx) : [];
+
+        const startReading = baselineReadingObj ? baselineReadingObj.value : 0;
+        const cycleStartDateStr = baselineReadingObj ? baselineReadingObj.date : todayISO;
+        const latestReadingObj = activeCycleReadings.length > 0
+          ? activeCycleReadings[activeCycleReadings.length - 1]
+          : null;
+        const currentMeterReading = latestReadingObj ? latestReadingObj.value : startReading;
+
+        const consumedUnits = Math.max(0, currentMeterReading - startReading);
+        const freeLimit = Math.max(0, config.freeUnitsLimit);
+        const remainingFreeUnits = Math.max(0, freeLimit - consumedUnits);
+        const exceededUnits = Math.max(0, consumedUnits - freeLimit);
+        const isExceeded = consumedUnits > freeLimit;
+
+        const cycleStartDate = parseLocalDate(cycleStartDateStr) || today;
+        const billDate = parseLocalDate(config.billDate) || today;
+        const latestReadingDate = latestReadingObj ? (parseLocalDate(latestReadingObj.date) || today) : today;
+
+        const totalCycleDays = Math.max(1, diffDays(cycleStartDate, billDate));
+        const daysElapsedToday = Math.max(0, Math.min(totalCycleDays, diffDays(cycleStartDate, today)));
+        const daysRemaining = Math.max(0, diffDays(today, billDate));
+
+        const loggedSpanDays = latestReadingObj && latestReadingObj.id !== baselineReadingObj?.id
+          ? Math.max(1, diffDays(cycleStartDate, latestReadingDate))
+          : Math.max(1, daysElapsedToday);
+
+        const currentDailyPace = consumedUnits > 0 ? (consumedUnits / loggedSpanDays) : 0;
+        const safeDailyAllowance = daysRemaining > 0 ? (remainingFreeUnits / daysRemaining) : remainingFreeUnits;
+
+        const daysFromLatestToBill = latestReadingObj
+          ? Math.max(0, diffDays(latestReadingDate, billDate))
+          : daysRemaining;
+        const projectedTotalUnits = consumedUnits + (currentDailyPace * daysFromLatestToBill);
+        const projectedExcessUnits = Math.max(0, projectedTotalUnits - freeLimit);
+
+        const currentEstimatedBill = calculateEstimatedBill(consumedUnits, config);
+        const projectedEstimatedBill = calculateEstimatedBill(projectedTotalUnits, config);
+
+        let usedRatio = 0;
+        if (freeLimit > 0) {
+          usedRatio = consumedUnits / freeLimit;
+        } else {
+          usedRatio = consumedUnits > 0 ? 1 : 0;
+        }
+
+        let status = 'safe';
+        if (isExceeded) {
+          status = 'exceeded';
+        } else if (usedRatio >= 0.75 || (daysRemaining > 0 && currentDailyPace > safeDailyAllowance * 1.05 && consumedUnits > 0)) {
+          status = 'watchlist';
+        }
+
+        const timeElapsedPct = Math.min(100, Math.max(0, (daysElapsedToday / totalCycleDays) * 100));
+
+        return {
+          sortedAsc,
+          sortedDesc: [...sortedAsc].reverse(),
+          activeCycleReadings,
+          activeCycleDesc: [...activeCycleReadings].reverse(),
+          cycleBaselineById,
+          deltaById,
+          latestReadingObj,
+          baselineReadingObj,
+          startReading,
+          cycleStartDateStr,
+          currentMeterReading,
+          consumedUnits,
+          freeLimit,
+          remainingFreeUnits,
+          exceededUnits,
+          isExceeded,
+          totalCycleDays,
+          daysElapsedToday,
+          loggedSpanDays,
+          daysRemaining,
+          timeElapsedPct,
+          currentDailyPace,
+          safeDailyAllowance,
+          projectedTotalUnits,
+          projectedExcessUnits,
+          currentEstimatedBill,
+          projectedEstimatedBill,
+          status,
+          usedRatio
+        };
+      }
+
+      // ---------- Active Cycle Consumption Chart ----------
+      function renderActiveCycleChart(state, m) {
+        const section = document.getElementById('trendChartSection');
+        const container = document.getElementById('cycleChartContainer');
+        const capLabel = document.getElementById('chartFreeCapLabel');
+
+        if (m.activeCycleReadings.length < 2) {
+          section.classList.add('hidden');
+          return;
+        }
+
+        section.classList.remove('hidden');
+        capLabel.textContent = `Free cap: ${round1(m.freeLimit)} kWh`;
+
+        const points = m.activeCycleReadings.map((r) => ({
+          date: r.date,
+          used: Math.max(0, r.value - m.startReading)
+        }));
+
+        const maxVal = Math.max(m.freeLimit * 1.08, ...points.map((p) => p.used), 10);
+        const W = 600;
+        const H = 150;
+        const padL = 38;
+        const padR = 16;
+        const padT = 16;
+        const padB = 26;
+        const plotW = W - padL - padR;
+        const plotH = H - padT - padB;
+
+        const xOf = (idx) => padL + (points.length === 1 ? plotW / 2 : (idx / (points.length - 1)) * plotW);
+        const yOf = (val) => padT + plotH - (val / maxVal) * plotH;
+
+        const lineCoords = points.map((p, i) => `${xOf(i).toFixed(1)},${yOf(p.used).toFixed(1)}`).join(' ');
+        const areaCoords = `${xOf(0).toFixed(1)},${(padT + plotH).toFixed(1)} ${lineCoords} ${xOf(points.length - 1).toFixed(1)},${(padT + plotH).toFixed(1)}`;
+        const limitY = yOf(m.freeLimit);
+        const strokeColor = m.isExceeded ? '#f43f5e' : (m.status === 'watchlist' ? '#f59e0b' : '#06b6d4');
+
+        const dotsSvg = points.map((p, i) => `
+          <circle cx="${xOf(i).toFixed(1)}" cy="${yOf(p.used).toFixed(1)}" r="4.2" fill="${strokeColor}" stroke="white" stroke-width="1.8">
+            <title>${formatPrettyDate(p.date)}: ${round1(p.used).toFixed(1)} kWh</title>
+          </circle>
+        `).join('');
+
+        const firstLabel = formatPrettyDate(points[0].date).replace(/,\s*\d{4}$/, '');
+        const lastLabel = formatPrettyDate(points[points.length - 1].date).replace(/,\s*\d{4}$/, '');
+
+        container.innerHTML = `
+          <svg viewBox="0 0 ${W} ${H}" class="w-full h-auto block" role="img" aria-label="Active cycle electricity consumption trend">
+            <defs>
+              <linearGradient id="areaGrad" x1="0" y1="0" x2="0" y2="1">
+                <stop offset="0%" stop-color="${strokeColor}" stop-opacity="0.3" />
+                <stop offset="100%" stop-color="${strokeColor}" stop-opacity="0.02" />
+              </linearGradient>
+            </defs>
+            ${m.freeLimit > 0 ? `
+              <line x1="${padL}" y1="${limitY.toFixed(1)}" x2="${W - padR}" y2="${limitY.toFixed(1)}"
+                stroke="#10b981" stroke-opacity="0.6" stroke-width="1.5" stroke-dasharray="5 5" />
+              <text x="${padL - 6}" y="${(limitY + 3.5).toFixed(1)}" text-anchor="end" fill="#10b981" font-size="10" font-weight="700">${Math.round(m.freeLimit)}</text>
+            ` : ''}
+            <line x1="${padL}" y1="${padT + plotH}" x2="${W - padR}" y2="${padT + plotH}" stroke="currentColor" stroke-opacity="0.12" stroke-width="1" />
+            <text x="${padL - 6}" y="${padT + plotH + 3}" text-anchor="end" fill="currentColor" fill-opacity="0.45" font-size="10">0</text>
+            <polygon points="${areaCoords}" fill="url(#areaGrad)" />
+            <polyline points="${lineCoords}" fill="none" stroke="${strokeColor}" stroke-width="2.8" stroke-linecap="round" stroke-linejoin="round" />
+            ${dotsSvg}
+            <text x="${padL}" y="${H - 6}" text-anchor="start" fill="currentColor" fill-opacity="0.5" font-size="10.5">${escapeHtml(firstLabel)}</text>
+            <text x="${W - padR}" y="${H - 6}" text-anchor="end" fill="currentColor" fill-opacity="0.5" font-size="10.5">${escapeHtml(lastLabel)}</text>
+          </svg>
+        `;
+      }
+
+      // ---------- Main Render ----------
+      function render(state) {
+        const m = computeMetrics(state);
+        const { config } = state;
+        const cur = config.currencySymbol || '₹';
+
+        // Update circular gauge
+        updateHeroGauge(m.consumedUnits, m.freeLimit, m.status);
+
+        // Onboarding callout
+        const emptyBanner = document.getElementById('emptyOnboardingBanner');
+        if (state.readings.length === 0) {
+          emptyBanner.classList.remove('hidden');
+        } else {
+          emptyBanner.classList.add('hidden');
+        }
+
+        // Hero Glow & Header Info
+        const heroCard = document.getElementById('statusHeroCard');
+        heroCard.classList.remove('hero-glow-safe', 'hero-glow-watchlist', 'hero-glow-exceeded');
+        heroCard.classList.add(
+          m.status === 'exceeded' ? 'hero-glow-exceeded' : (m.status === 'watchlist' ? 'hero-glow-watchlist' : 'hero-glow-safe')
+        );
+
+        document.getElementById('cyclePeriodText').textContent =
+          m.baselineReadingObj
+            ? `${formatPrettyDate(m.cycleStartDateStr)} → ${formatPrettyDate(config.billDate)}`
+            : `Target bill: ${formatPrettyDate(config.billDate)}`;
+        document.getElementById('billDateLabel').textContent =
+          `Target Bill: ${formatPrettyDate(config.billDate)}`;
+        document.getElementById('daysRemainingPill').textContent =
+          m.daysRemaining === 0
+            ? 'Bill day / Cycle due'
+            : `${m.daysRemaining} ${m.daysRemaining === 1 ? 'day' : 'days'} left`;
+        document.getElementById('startReadingPill').textContent =
+          m.baselineReadingObj
+            ? `Baseline: ${round1(m.startReading).toFixed(1)} kWh`
+            : 'No baseline yet';
+
+        const badge = document.getElementById('statusBadge');
+        const dot = document.getElementById('statusDot');
+        const label = document.getElementById('statusLabel');
+        const heroVal = document.getElementById('remainingOrExcessValue');
+        const heroLabel = document.getElementById('allowanceHeadlineLabel');
+        const heroUnit = document.getElementById('remainingOrExcessUnit');
+        const progressBar = document.getElementById('allowanceProgressBar');
+        const adviceEl = document.getElementById('statusAdviceText');
+
+        if (m.status === 'exceeded') {
+          badge.className = 'inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-bold tracking-wide uppercase bg-rose-100 text-rose-800 dark:bg-rose-950/90 dark:text-rose-300';
+          dot.className = 'w-2 h-2 rounded-full bg-rose-500';
+          label.textContent = 'Exceeding Free Limit';
+
+          heroLabel.textContent = 'Units Over Free Limit';
+          heroVal.textContent = `+${round1(m.exceededUnits).toFixed(1)}`;
+          heroVal.className = 'text-4xl sm:text-5xl font-extrabold tracking-tight tabular-nums text-rose-600 dark:text-rose-400';
+          heroUnit.textContent = `kWh above ${round1(m.freeLimit)} free limit`;
+
+          progressBar.style.width = '100%';
+          progressBar.className = 'progress-fill h-full rounded-full bg-rose-500';
+
+          adviceEl.textContent =
+            `You have used ${round1(m.consumedUnits).toFixed(1)} units against your ${round1(m.freeLimit)}-unit free quota. ` +
+            (config.billAllOnExceed
+              ? `Because full-bill mode is enabled, all ${round1(m.consumedUnits).toFixed(1)} units count toward your estimated bill (${cur}${Math.round(m.currentEstimatedBill)}).`
+              : `Extra units above ${round1(m.freeLimit)} count toward your estimated bill (${cur}${Math.round(m.currentEstimatedBill)}).`);
+        } else if (m.status === 'watchlist') {
+          badge.className = 'inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-bold tracking-wide uppercase bg-amber-100 text-amber-800 dark:bg-amber-950/90 dark:text-amber-300';
+          dot.className = 'w-2 h-2 rounded-full bg-amber-500';
+          label.textContent = 'Watchlist';
+
+          heroLabel.textContent = 'Remaining Free Units';
+          heroVal.textContent = round1(m.remainingFreeUnits).toFixed(1);
+          heroVal.className = 'text-4xl sm:text-5xl font-extrabold tracking-tight tabular-nums text-amber-600 dark:text-amber-400';
+          heroUnit.textContent = `/ ${round1(m.freeLimit)} kWh free`;
+
+          const pct = m.freeLimit > 0 ? Math.min(100, Math.max(0, (m.consumedUnits / m.freeLimit) * 100)) : 0;
+          progressBar.style.width = `${pct}%`;
+          progressBar.className = 'progress-fill h-full rounded-full bg-amber-500';
+
+          adviceEl.textContent =
+            `Keep usage at or below ${round1(m.safeDailyAllowance).toFixed(1)} units/day for the remaining ${m.daysRemaining} ` +
+            `${m.daysRemaining === 1 ? 'day' : 'days'} to stay inside your ${round1(m.freeLimit)}-unit free quota.`;
+        } else {
+          badge.className = 'inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-bold tracking-wide uppercase bg-emerald-100 text-emerald-800 dark:bg-emerald-950/80 dark:text-emerald-300';
+          dot.className = 'w-2 h-2 rounded-full bg-emerald-500';
+          label.textContent = state.readings.length === 0 ? 'Ready' : 'Safe';
+
+          heroLabel.textContent = 'Remaining Free Units';
+          heroVal.textContent = round1(m.remainingFreeUnits).toFixed(1);
+          heroVal.className = 'text-4xl sm:text-5xl font-extrabold tracking-tight tabular-nums text-emerald-600 dark:text-emerald-400';
+          heroUnit.textContent = `/ ${round1(m.freeLimit)} kWh free`;
+
+          const pct = m.freeLimit > 0 ? Math.min(100, Math.max(0, (m.consumedUnits / m.freeLimit) * 100)) : 0;
+          progressBar.style.width = `${pct}%`;
+          progressBar.className = 'progress-fill h-full rounded-full bg-gradient-to-r from-sky-500 to-emerald-500';
+
+          adviceEl.textContent = state.readings.length === 0
+            ? `Log your previous bill reading below to start tracking your ${round1(m.freeLimit)}-unit free quota.`
+            : `On track! You can safely use up to ${round1(m.safeDailyAllowance).toFixed(1)} units/day until ${formatPrettyDate(config.billDate)} without crossing your ${round1(m.freeLimit)}-unit free limit.`;
+        }
+
+        document.getElementById('consumedUnitsValue').textContent = round1(m.consumedUnits).toFixed(1);
+        if (m.latestReadingObj) {
+          document.getElementById('latestMeterSummary').textContent =
+            `Latest: ${round1(m.latestReadingObj.value).toFixed(1)} kWh (${formatPrettyDate(m.latestReadingObj.date)})`;
+        } else {
+          document.getElementById('latestMeterSummary').textContent = 'No readings logged yet';
+        }
+
+        const usedPctDisplay = m.freeLimit > 0
+          ? Math.round((m.consumedUnits / m.freeLimit) * 100)
+          : (m.consumedUnits > 0 ? 100 : 0);
+        document.getElementById('progressLeftLabel').textContent = `${usedPctDisplay}% of free allowance used`;
+        document.getElementById('progressRightLabel').textContent =
+          `${round1(m.consumedUnits).toFixed(1)} / ${round1(m.freeLimit)} units`;
+
+        // Cycle Time Elapsed Marker
+        const marker = document.getElementById('cycleTimeMarker');
+        const elapsedLabel = document.getElementById('timeElapsedLabel');
+        const paceTag = document.getElementById('paceVsBudgetTag');
+        if (m.baselineReadingObj) {
+          marker.style.left = `${m.timeElapsedPct.toFixed(1)}%`;
+          marker.classList.remove('hidden');
+          elapsedLabel.textContent = `Cycle timeline: ${Math.round(m.timeElapsedPct)}% elapsed (Day ${m.daysElapsedToday} of ${m.totalCycleDays})`;
+          if (m.consumedUnits > 0 && m.daysRemaining > 0) {
+            const diff = m.safeDailyAllowance - m.currentDailyPace;
+            paceTag.textContent = diff >= 0
+              ? `${round1(diff).toFixed(1)} u/day under budget`
+              : `${round1(Math.abs(diff)).toFixed(1)} u/day over budget`;
+          } else {
+            paceTag.textContent = '';
+          }
+        } else {
+          marker.classList.add('hidden');
+          elapsedLabel.textContent = 'Cycle timeline starts after baseline reading';
+          paceTag.textContent = '';
+        }
+
+        // KPI Cards
+        document.getElementById('metricDaysLeft').textContent = String(m.daysRemaining);
+
+        const safeDailyEl = document.getElementById('metricSafeDaily');
+        safeDailyEl.textContent = round1(m.safeDailyAllowance).toFixed(1);
+        safeDailyEl.className = m.isExceeded
+          ? 'text-2xl font-extrabold mt-1 tabular-nums text-rose-600 dark:text-rose-400'
+          : 'text-2xl font-extrabold mt-1 tabular-nums text-emerald-600 dark:text-emerald-400';
+
+        const paceEl = document.getElementById('metricCurrentPace');
+        paceEl.textContent = round1(m.currentDailyPace).toFixed(1);
+        paceEl.className = (m.currentDailyPace > m.safeDailyAllowance && m.daysRemaining > 0 && m.consumedUnits > 0)
+          ? 'text-2xl font-extrabold mt-1 tabular-nums text-amber-600 dark:text-amber-400'
+          : 'text-2xl font-extrabold mt-1 tabular-nums';
+        document.getElementById('metricPaceSub').textContent = m.consumedUnits > 0
+          ? `over ${m.loggedSpanDays} logged ${m.loggedSpanDays === 1 ? 'day' : 'days'}`
+          : 'units/day avg';
+
+        const projEl = document.getElementById('metricProjectedTotal');
+        projEl.textContent = round1(m.projectedTotalUnits).toFixed(1);
+        projEl.className = m.projectedTotalUnits > m.freeLimit
+          ? 'text-2xl font-extrabold mt-1 tabular-nums text-rose-600 dark:text-rose-400'
+          : 'text-2xl font-extrabold mt-1 tabular-nums text-slate-900 dark:text-white';
+
+        const hasTariff = config.rateAboveFree > 0 || config.fixedCharge > 0;
+        const estSubEl = document.getElementById('metricEstBillSub');
+        if (hasTariff) {
+          estSubEl.textContent = `est. bill: ${cur}${Math.round(m.projectedEstimatedBill)}`;
+        } else {
+          estSubEl.textContent = m.projectedExcessUnits > 0
+            ? `+${round1(m.projectedExcessUnits).toFixed(1)} over free limit`
+            : 'within free limit';
+        }
+
+        renderActiveCycleChart(state, m);
+        renderHistory(state, m);
+        renderPastCycles(state);
+        updateLivePreview(state, m);
+        updateSyncUI();
+      }
+
+      // ---------- Completed Cycles ----------
+      function computeCompletedCycles(state) {
+        const sorted = [...state.readings].sort((a, b) => {
+          if (a.date !== b.date) return a.date.localeCompare(b.date);
+          if (a.isBilledBaseline !== b.isBilledBaseline) return a.isBilledBaseline ? -1 : 1;
+          return a.value - b.value;
+        });
+
+        const billedIndices = [];
+        sorted.forEach((r, idx) => {
+          if (r.isBilledBaseline) billedIndices.push(idx);
+        });
+
+        const cycles = [];
+        const limit = state.config.freeUnitsLimit;
+
+        for (let i = 0; i < billedIndices.length - 1; i++) {
+          const startObj = sorted[billedIndices[i]];
+          const endObj = sorted[billedIndices[i + 1]];
+
+          const totalUnits = Math.max(0, endObj.value - startObj.value);
+          const freeUnitsUsed = Math.min(limit, totalUnits);
+          const excessUnits = Math.max(0, totalUnits - limit);
+
+          const startDate = parseLocalDate(startObj.date);
+          const endDate = parseLocalDate(endObj.date);
+          const durationDays = Math.max(1, diffDays(startDate, endDate));
+          const avgDaily = totalUnits / durationDays;
+          const cost = calculateEstimatedBill(totalUnits, state.config);
+
+          cycles.push({
+            startDateStr: startObj.date,
+            endDateStr: endObj.date,
+            startReading: startObj.value,
+            endReading: endObj.value,
+            totalUnits,
+            freeUnitsUsed,
+            excessUnits,
+            durationDays,
+            avgDaily,
+            cost
+          });
+        }
+        return cycles;
+      }
+
+      function renderPastCycles(state) {
+        const cycles = computeCompletedCycles(state);
+        const container = document.getElementById('pastCyclesContainer');
+        const countBadge = document.getElementById('cycleCountBadge');
+        const cur = state.config.currencySymbol || '₹';
+
+        countBadge.textContent = `${cycles.length} Completed ${cycles.length === 1 ? 'Cycle' : 'Cycles'}`;
+
+        if (cycles.length === 0) {
+          container.innerHTML = `
+            <div class="py-8 text-center bg-slate-50 dark:bg-slate-800/40 rounded-2xl border border-dashed border-slate-200 dark:border-slate-800 p-4">
+              <p class="text-xs font-semibold text-slate-600 dark:text-slate-300">No completed monthly cycles yet</p>
+              <p class="text-[11px] text-slate-400 dark:text-slate-500 mt-1 max-w-md mx-auto">
+                Each time your electricity bill is generated and you log a <strong>Bill Generated (New Cycle)</strong> reading, the completed month archives here with month-over-month trends.
+              </p>
+            </div>
+          `;
+          return;
+        }
+
+        const reversedCycles = [...cycles].reverse();
+
+        container.innerHTML = reversedCycles.map((cycle, idx) => {
+          const prevCycleIndex = cycles.length - 2 - idx;
+          const prevCycle = prevCycleIndex >= 0 ? cycles[prevCycleIndex] : null;
+
+          let momBadgeHtml = '';
+          if (prevCycle && prevCycle.totalUnits > 0) {
+            const pctChange = ((cycle.totalUnits - prevCycle.totalUnits) / prevCycle.totalUnits) * 100;
+            const isUp = pctChange > 0;
+            const absPct = Math.abs(pctChange).toFixed(1);
+            momBadgeHtml = isUp
+              ? `<span class="inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[11px] font-bold bg-rose-100 text-rose-700 dark:bg-rose-950 dark:text-rose-300">↑ +${absPct}% vs prev</span>`
+              : `<span class="inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[11px] font-bold bg-emerald-100 text-emerald-700 dark:bg-emerald-950 dark:text-emerald-300">↓ -${absPct}% vs prev</span>`;
+          }
+
+          const freePct = cycle.totalUnits > 0 ? Math.min(100, (cycle.freeUnitsUsed / cycle.totalUnits) * 100) : 100;
+          const excessPct = 100 - freePct;
+
+          return `
+            <div class="rounded-2xl border border-slate-200 dark:border-slate-800 p-4 sm:p-5 bg-slate-50/50 dark:bg-slate-800/30 space-y-3">
+              <div class="flex flex-wrap items-center justify-between gap-2">
+                <div>
+                  <h3 class="text-sm font-bold text-slate-800 dark:text-slate-100 flex items-center gap-2 flex-wrap">
+                    <span>${formatPrettyDate(cycle.startDateStr)} → ${formatPrettyDate(cycle.endDateStr)}</span>
+                    ${momBadgeHtml}
+                  </h3>
+                  <p class="text-xs text-slate-500 dark:text-slate-400 mt-0.5 tabular-nums">
+                    Meter: ${round1(cycle.startReading).toFixed(1)} kWh to ${round1(cycle.endReading).toFixed(1)} kWh (${cycle.durationDays} days)
+                  </p>
+                </div>
+
+                <div class="text-right">
+                  <span class="text-lg font-extrabold tabular-nums ${cycle.excessUnits > 0 ? 'text-amber-600 dark:text-amber-400' : 'text-emerald-600 dark:text-emerald-400'}">
+                    ${round1(cycle.totalUnits).toFixed(1)} kWh
+                  </span>
+                  <p class="text-[11px] font-medium text-slate-500 dark:text-slate-400 tabular-nums">
+                    ${cycle.cost > 0 ? `Est. Bill: ${cur}${Math.round(cycle.cost)}` : 'Within free quota'}
+                  </p>
+                </div>
+              </div>
+
+              <div class="space-y-1">
+                <div class="w-full h-2.5 rounded-full bg-slate-200 dark:bg-slate-700 overflow-hidden flex">
+                  <div class="h-full bg-gradient-to-r from-sky-500 to-emerald-500" style="width: ${freePct}%"></div>
+                  <div class="h-full bg-rose-500" style="width: ${excessPct}%"></div>
+                </div>
+                <div class="flex justify-between text-[11px] text-slate-500 dark:text-slate-400 tabular-nums font-medium">
+                  <span>Free used: ${round1(cycle.freeUnitsUsed).toFixed(1)} / ${round1(state.config.freeUnitsLimit)} units</span>
+                  <span>${cycle.excessUnits > 0 ? `Excess: +${round1(cycle.excessUnits).toFixed(1)} units` : '0 units excess'}</span>
+                </div>
+              </div>
+
+              <div class="grid grid-cols-2 sm:grid-cols-3 gap-2 pt-1 text-xs">
+                <div class="bg-white dark:bg-slate-900 px-3 py-2 rounded-xl border border-slate-200/60 dark:border-slate-800">
+                  <span class="text-slate-400 text-[10px] uppercase font-bold">Daily Avg</span>
+                  <p class="font-bold tabular-nums">${round1(cycle.avgDaily).toFixed(1)} units/day</p>
+                </div>
+                <div class="bg-white dark:bg-slate-900 px-3 py-2 rounded-xl border border-slate-200/60 dark:border-slate-800">
+                  <span class="text-slate-400 text-[10px] uppercase font-bold">Free Quota Status</span>
+                  <p class="font-bold tabular-nums ${cycle.excessUnits > 0 ? 'text-rose-600 dark:text-rose-400' : 'text-emerald-600 dark:text-emerald-400'}">
+                    ${cycle.excessUnits > 0 ? `+${round1(cycle.excessUnits).toFixed(1)} over` : '100% Free'}
+                  </p>
+                </div>
+                <div class="bg-white dark:bg-slate-900 px-3 py-2 rounded-xl border border-slate-200/60 dark:border-slate-800 col-span-2 sm:col-span-1">
+                  <span class="text-slate-400 text-[10px] uppercase font-bold">Est. Bill</span>
+                  <p class="font-bold tabular-nums">${cycle.cost > 0 ? `${cur}${Math.round(cycle.cost)}` : `${cur}0 Free`}</p>
+                </div>
+              </div>
+            </div>
+          `;
+        }).join('');
+      }
+
+      // ---------- Reading History ----------
+      function renderHistory(state, m) {
+        const container = document.getElementById('historyList');
+        const list = historyFilter === 'current' ? m.activeCycleDesc : m.sortedDesc;
+
+        if (list.length === 0) {
+          container.innerHTML = `
+            <div class="py-8 text-center">
+              <p class="text-sm font-semibold text-slate-600 dark:text-slate-300">No meter readings logged yet</p>
+              <p class="text-xs text-slate-400 dark:text-slate-500 mt-1">
+                Log your previous bill reading as <strong>Bill Generated</strong> above to begin tracking.
+              </p>
+            </div>
+          `;
+          return;
+        }
+
+        container.innerHTML = list.map((reading) => {
+          const delta = m.deltaById.get(reading.id) || 0;
+          const deltaText = delta >= 0 ? `+${round1(delta).toFixed(1)} kWh` : `${round1(delta).toFixed(1)} kWh`;
+          const ownBaseline = m.cycleBaselineById.get(reading.id) ?? m.startReading;
+          const cumulativeUsed = Math.max(0, reading.value - ownBaseline);
+          const noteHtml = reading.note ? ` · ${escapeHtml(reading.note)}` : '';
+
+          return `
+            <div class="py-3.5 flex items-center justify-between gap-3">
+              <div class="min-w-0">
+                <div class="flex items-center gap-2 flex-wrap">
+                  <span class="text-base font-bold tabular-nums">${round1(reading.value).toFixed(1)} kWh</span>
+                  ${
+                    reading.isBilledBaseline
+                      ? `<span class="inline-flex items-center px-2 py-0.5 rounded-md text-[11px] font-bold uppercase tracking-wide bg-sky-100 text-sky-800 dark:bg-sky-950 dark:text-sky-300">Billed Baseline</span>`
+                      : `<span class="inline-flex items-center px-2 py-0.5 rounded-md text-xs font-semibold tabular-nums ${
+                          delta >= 0
+                            ? 'bg-emerald-50 text-emerald-700 dark:bg-emerald-950/70 dark:text-emerald-300'
+                            : 'bg-amber-50 text-amber-700 dark:bg-amber-950/70 dark:text-amber-300'
+                        }">${deltaText}</span>`
+                  }
+                </div>
+                <p class="text-xs text-slate-500 dark:text-slate-400 mt-0.5 tabular-nums truncate">
+                  ${formatPrettyDate(reading.date)} ${reading.isBilledBaseline ? '· Cycle baseline' : `· Cycle used: ${round1(cumulativeUsed).toFixed(1)} / ${round1(state.config.freeUnitsLimit)}`}${noteHtml}
+                </p>
+              </div>
+
+              <div class="flex items-center gap-1 shrink-0">
+                <button
+                  type="button"
+                  data-edit-id="${reading.id}"
+                  class="px-2.5 py-1.5 rounded-xl text-xs font-semibold text-slate-600 hover:bg-slate-100 dark:text-slate-300 dark:hover:bg-slate-800 transition cursor-pointer"
+                >
+                  Edit
+                </button>
+                <button
+                  type="button"
+                  data-delete-id="${reading.id}"
+                  class="px-2.5 py-1.5 rounded-xl text-xs font-semibold text-rose-600 hover:bg-rose-50 dark:text-rose-400 dark:hover:bg-rose-950/60 transition cursor-pointer"
+                >
+                  Delete
+                </button>
+              </div>
+            </div>
+          `;
+        }).join('');
+
+        container.querySelectorAll('[data-edit-id]').forEach((btn) => {
+          btn.addEventListener('click', () => {
+            const id = btn.getAttribute('data-edit-id');
+            const item = state.readings.find((r) => r.id === id);
+            if (!item) return;
+            startEditingReading(item);
+          });
+        });
+
+        container.querySelectorAll('[data-delete-id]').forEach((btn) => {
+          btn.addEventListener('click', async () => {
+            const id = btn.getAttribute('data-delete-id');
+            const item = state.readings.find((r) => r.id === id);
+            if (!item) return;
+            const ok = window.confirm(`Delete reading of ${round1(item.value).toFixed(1)} kWh from ${formatPrettyDate(item.date)}?`);
+            if (!ok) return;
+
+            state.readings = state.readings.filter((r) => r.id !== id);
+            saveLocalState(state);
+            render(state);
+            showToast('Reading deleted.', 'info');
+            await pushStateToCloud(state, { silent: true });
+          });
+        });
+      }
+
+      function startEditingReading(item) {
+        document.getElementById('editingReadingId').value = item.id;
+        document.getElementById('readingDate').value = item.date;
+        document.getElementById('readingValue').value = item.value;
+        document.getElementById('readingNote').value = item.note || '';
+        document.getElementById('typeBilled').checked = item.isBilledBaseline;
+        document.getElementById('typeDaily').checked = !item.isBilledBaseline;
+
+        document.getElementById('formHeading').textContent = 'Edit Meter Reading';
+        document.getElementById('btnSaveText').textContent = 'Update Reading';
+        document.getElementById('btnCancelEdit').classList.remove('hidden');
+
+        document.getElementById('readingForm').scrollIntoView({ behavior: 'smooth', block: 'center' });
+        document.getElementById('readingValue').focus();
+      }
+
+      function resetFormMode() {
+        document.getElementById('editingReadingId').value = '';
+        document.getElementById('readingDate').value = formatISODate(new Date());
+        document.getElementById('readingValue').value = '';
+        document.getElementById('readingNote').value = '';
+        document.getElementById('typeDaily').checked = true;
+        document.getElementById('formHeading').textContent = 'Log Meter Reading';
+        document.getElementById('btnSaveText').textContent = 'Save Meter Reading';
+        document.getElementById('btnCancelEdit').classList.add('hidden');
+      }
+
+      function updateLivePreview(state, m) {
+        const inputVal = parseFloat(document.getElementById('readingValue').value);
+        const isBilled = document.getElementById('typeBilled').checked;
+        const previewText = document.getElementById('livePreviewText');
+
+        if (!Number.isFinite(inputVal)) {
+          previewText.textContent = isBilled
+            ? 'Starts a new billing cycle at 0.0 units and auto-advances your next target bill date'
+            : 'Enter a reading above to preview usage & free units left';
+          return;
+        }
+
+        if (isBilled) {
+          previewText.innerHTML = `<span class="text-sky-600 dark:text-cyan-400 font-bold">New cycle baseline: ${round1(inputVal).toFixed(1)} kWh · Resets cycle usage to 0.0</span>`;
+          return;
+        }
+
+        if (!m.baselineReadingObj) {
+          previewText.innerHTML = `<span class="text-emerald-600 dark:text-emerald-400">First reading: ${round1(inputVal).toFixed(1)} kWh (tip: choose Bill Generated for your initial baseline)</span>`;
+          return;
+        }
+
+        const totalUsed = Math.max(0, inputVal - m.startReading);
+        const leftFree = Math.max(0, state.config.freeUnitsLimit - totalUsed);
+        const overFree = Math.max(0, totalUsed - state.config.freeUnitsLimit);
+
+        if (overFree > 0) {
+          previewText.innerHTML = `<span class="text-rose-600 dark:text-rose-400">${round1(totalUsed).toFixed(1)} units used · ${round1(overFree).toFixed(1)} units over free limit</span>`;
+        } else {
+          previewText.innerHTML = `<span class="text-emerald-600 dark:text-emerald-400">${round1(totalUsed).toFixed(1)} units used · ${round1(leftFree).toFixed(1)} free units remaining</span>`;
+        }
+      }
+
+      // ---------- CSV & JSON Export/Import ----------
+      function exportCSV(state) {
+        const sorted = [...state.readings].sort((a, b) => a.date.localeCompare(b.date));
+        const rows = [['Date', 'Reading Type', 'Meter Reading (kWh)', 'Notes']];
+        sorted.forEach((r) => {
+          rows.push([
+            r.date,
+            r.isBilledBaseline ? 'Billed Baseline' : 'Daily Check-in',
+            r.value.toFixed(1),
+            r.note || ''
+          ]);
+        });
+        const csvContent = rows
+          .map((row) => row.map((cell) => `"${String(cell).replace(/"/g, '""')}"`).join(','))
+          .join('\n');
+        downloadFile(csvContent, `electricity-tracker-readings-${formatISODate(new Date())}.csv`, 'text/csv;charset=utf-8;');
+        showToast('Exported CSV file.', 'success');
+      }
+
+      function exportJSON(state) {
+        const jsonContent = JSON.stringify(state, null, 2);
+        downloadFile(jsonContent, `electricity-tracker-backup-${formatISODate(new Date())}.json`, 'application/json');
+        showToast('Exported JSON backup.', 'success');
+      }
+
+      function downloadFile(content, filename, mimeType) {
+        const blob = new Blob([content], { type: mimeType });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = filename;
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        URL.revokeObjectURL(url);
+      }
+
+      // ---------- Theme ----------
+      function initTheme() {
+        const savedTheme = localStorage.getItem(THEME_KEY) || localStorage.getItem('meterpulse_theme_v1');
+        const prefersDark = window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches;
+        applyTheme(savedTheme ? savedTheme === 'dark' : prefersDark);
+
+        document.getElementById('btnThemeToggle').addEventListener('click', () => {
+          const nextDark = !document.documentElement.classList.contains('dark');
+          applyTheme(nextDark);
+          localStorage.setItem(THEME_KEY, nextDark ? 'dark' : 'light');
+        });
+      }
+
+      function applyTheme(isDark) {
+        const root = document.documentElement;
+        const sun = document.getElementById('iconSun');
+        const moon = document.getElementById('iconMoon');
+        const themeMeta = document.querySelector('meta[name="theme-color"]');
+        if (isDark) {
+          root.classList.add('dark');
+          sun.classList.remove('hidden');
+          moon.classList.add('hidden');
+          if (themeMeta) themeMeta.setAttribute('content', '#060c17');
+        } else {
+          root.classList.remove('dark');
+          sun.classList.add('hidden');
+          moon.classList.remove('hidden');
+          if (themeMeta) themeMeta.setAttribute('content', '#0891b2');
+        }
+      }
+
+      // ---------- PWA Service Worker & Install Prompt ----------
+      function initPWA() {
+        if ('serviceWorker' in navigator && (location.protocol === 'https:' || location.hostname === 'localhost')) {
+          navigator.serviceWorker.register('./sw.js', { scope: './' })
+            .catch((err) => console.warn('Service Worker registration failed:', err));
+        }
+
+        const btnInstall = document.getElementById('btnInstallPwa');
+        window.addEventListener('beforeinstallprompt', (e) => {
+          e.preventDefault();
+          deferredInstallPrompt = e;
+          btnInstall.classList.remove('hidden');
+          btnInstall.classList.add('inline-flex');
+        });
+
+        btnInstall.addEventListener('click', async () => {
+          if (!deferredInstallPrompt) return;
+          deferredInstallPrompt.prompt();
+          const { outcome } = await deferredInstallPrompt.userChoice;
+          if (outcome === 'accepted') {
+            btnInstall.classList.add('hidden');
+            btnInstall.classList.remove('inline-flex');
+            showToast('Monthly Electricity Tracker installed!', 'success');
+          }
+          deferredInstallPrompt = null;
+        });
+
+        window.addEventListener('appinstalled', () => {
+          btnInstall.classList.add('hidden');
+          btnInstall.classList.remove('inline-flex');
+        });
+      }
+
+      // ---------- Bootstrap ----------
+      document.addEventListener('DOMContentLoaded', async () => {
+        initTheme();
+        initPWA();
+        initHeroGaugeGeometry();
+
+        let state = loadState();
+        saveLocalState(state);
+
+        const readingDateInput = document.getElementById('readingDate');
+        const readingValueInput = document.getElementById('readingValue');
+        const readingNoteInput = document.getElementById('readingNote');
+        const btnSaveText = document.getElementById('btnSaveText');
+        const radioDaily = document.getElementById('typeDaily');
+        const radioBilled = document.getElementById('typeBilled');
+
+        readingDateInput.value = formatISODate(new Date());
+
+        function updateTypeUI() {
+          const isEditing = Boolean(document.getElementById('editingReadingId').value);
+          if (!isEditing) {
+            btnSaveText.textContent = radioBilled.checked ? 'Save Bill Generated Reading' : 'Save Meter Reading';
+          }
+          updateLivePreview(state, computeMetrics(state));
+        }
+
+        radioDaily.addEventListener('change', updateTypeUI);
+        radioBilled.addEventListener('change', updateTypeUI);
+        readingValueInput.addEventListener('input', () => updateLivePreview(state, computeMetrics(state)));
+        document.getElementById('btnCancelEdit').addEventListener('click', () => {
+          resetFormMode();
+          updateLivePreview(state, computeMetrics(state));
+        });
+
+        // Form Submit
+        document.getElementById('readingForm').addEventListener('submit', async (e) => {
+          e.preventDefault();
+          const editId = document.getElementById('editingReadingId').value;
+          const dateVal = readingDateInput.value;
+          const numVal = parseFloat(readingValueInput.value);
+          const noteVal = readingNoteInput.value.trim();
+          const isBilledBaseline = radioBilled.checked;
+
+          if (!dateVal) {
+            showToast('Please select a valid reading date.', 'error');
+            return;
+          }
+          if (!Number.isFinite(numVal) || numVal < 0) {
+            showToast('Please enter a valid non-negative meter reading (kWh).', 'error');
+            return;
+          }
+
+          const others = state.readings
+            .filter((r) => r.id !== editId && r.date <= dateVal)
+            .sort((a, b) => a.date.localeCompare(b.date) || a.value - b.value);
+          const prior = others.length > 0 ? others[others.length - 1] : null;
+          if (prior && numVal < prior.value) {
+            const proceed = window.confirm(
+              `Entered reading (${round1(numVal).toFixed(1)} kWh) is lower than the previous reading (${round1(prior.value).toFixed(1)} kWh on ${formatPrettyDate(prior.date)}).\n\nSave anyway (e.g., meter replaced)?`
+            );
+            if (!proceed) return;
+          }
+
+          if (editId) {
+            const idx = state.readings.findIndex((r) => r.id === editId);
+            if (idx !== -1) {
+              state.readings[idx] = {
+                ...state.readings[idx],
+                date: dateVal,
+                value: numVal,
+                isBilledBaseline,
+                note: noteVal
+              };
+            }
+          } else {
+            state.readings.push({
+              id: `r_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`,
+              date: dateVal,
+              value: numVal,
+              isBilledBaseline,
+              note: noteVal
+            });
+          }
+
+          if (isBilledBaseline) {
+            const latestBilledDate = state.readings
+              .filter((r) => r.isBilledBaseline)
+              .map((r) => r.date)
+              .sort()
+              .pop();
+            if (latestBilledDate === dateVal) {
+              const billDay = state.config.billDayOfMonth || parseLocalDate(dateVal)?.getDate() || 9;
+              state.config.billDate = getNextBillDate(dateVal, billDay);
+            }
+          }
+
+          saveLocalState(state);
+          resetFormMode();
+          render(state);
+
+          if (editId) {
+            showToast('Reading updated.', 'success');
+          } else if (isBilledBaseline) {
+            showToast(`New cycle started at ${round1(numVal).toFixed(1)} kWh! Next bill date set to ${formatPrettyDate(state.config.billDate)}.`, 'success');
+          } else {
+            showToast(`Logged ${round1(numVal).toFixed(1)} kWh for ${formatPrettyDate(dateVal)}.`, 'success');
+          }
+
+          await pushStateToCloud(state, { silent: true });
+        });
+
+        // History Filter Tabs
+        const btnFilterActive = document.getElementById('btnFilterActive');
+        const btnFilterAll = document.getElementById('btnFilterAll');
+        function setHistoryFilter(mode) {
+          historyFilter = mode;
+          const activeCls = 'px-2.5 py-1 rounded-lg bg-white dark:bg-slate-900 text-slate-900 dark:text-white shadow-sm transition cursor-pointer';
+          const idleCls = 'px-2.5 py-1 rounded-lg text-slate-500 dark:text-slate-400 hover:text-slate-800 dark:hover:text-slate-200 transition cursor-pointer';
+          btnFilterActive.className = mode === 'current' ? activeCls : idleCls;
+          btnFilterAll.className = mode === 'all' ? activeCls : idleCls;
+          renderHistory(state, computeMetrics(state));
+        }
+        btnFilterActive.addEventListener('click', () => setHistoryFilter('current'));
+        btnFilterAll.addEventListener('click', () => setHistoryFilter('all'));
+
+        // Settings Modal
+        const modal = document.getElementById('settingsModal');
+        function openSettings() {
+          const cloudCfg = loadCloudConfig();
+          document.getElementById('cfgBillDate').value = state.config.billDate;
+          document.getElementById('cfgBillDay').value = state.config.billDayOfMonth || 9;
+          document.getElementById('cfgFreeUnits').value = state.config.freeUnitsLimit;
+          document.getElementById('cfgCurrency').value = state.config.currencySymbol;
+          document.getElementById('cfgRateAboveFree').value = state.config.rateAboveFree;
+          document.getElementById('cfgFixedCharge').value = state.config.fixedCharge;
+          document.getElementById('cfgBillAllOnExceed').checked = Boolean(state.config.billAllOnExceed);
+          document.getElementById('cfgScriptUrl').value = cloudCfg.scriptUrl || '';
+          document.getElementById('cfgSyncSecret').value = cloudCfg.secret || '';
+          updateSyncUI();
+
+          modal.classList.remove('hidden');
+          modal.classList.add('flex');
+        }
+
+        function closeSettings() {
+          modal.classList.add('hidden');
+          modal.classList.remove('flex');
+        }
+
+        document.getElementById('btnOpenSettings').addEventListener('click', openSettings);
+        document.getElementById('btnBannerCloudSetup').addEventListener('click', openSettings);
+        document.getElementById('btnCloseSettings').addEventListener('click', closeSettings);
+        document.getElementById('btnCancelSettings').addEventListener('click', closeSettings);
+        modal.addEventListener('click', (e) => {
+          if (e.target === modal) closeSettings();
+        });
+
+        // Explicit Save Configuration
+        document.getElementById('settingsForm').addEventListener('submit', async (e) => {
+          e.preventDefault();
+          const billDate = document.getElementById('cfgBillDate').value;
+          const billDayOfMonth = Math.min(28, Math.max(1, parseInt(document.getElementById('cfgBillDay').value, 10) || 9));
+          const freeUnitsLimit = parseFloat(document.getElementById('cfgFreeUnits').value);
+          const currencySymbol = (document.getElementById('cfgCurrency').value || '₹').trim();
+          const rateAboveFree = parseFloat(document.getElementById('cfgRateAboveFree').value) || 0;
+          const fixedCharge = parseFloat(document.getElementById('cfgFixedCharge').value) || 0;
+          const billAllOnExceed = document.getElementById('cfgBillAllOnExceed').checked;
+          const scriptUrl = document.getElementById('cfgScriptUrl').value.trim();
+          const secret = document.getElementById('cfgSyncSecret').value;
+
+          if (!billDate) {
+            showToast('Please set the next target bill date.', 'error');
+            return;
+          }
+          if (!Number.isFinite(freeUnitsLimit) || freeUnitsLimit < 0) {
+            showToast('Free unit limit must be 0 or greater.', 'error');
+            return;
+          }
+
+          state.config = {
+            billDate,
+            billDayOfMonth,
+            freeUnitsLimit,
+            currencySymbol,
+            rateAboveFree: Math.max(0, rateAboveFree),
+            fixedCharge: Math.max(0, fixedCharge),
+            billAllOnExceed
+          };
+
+          const prevCloud = loadCloudConfig();
+          saveCloudConfig({
+            ...prevCloud,
+            scriptUrl,
+            secret
+          });
+
+          saveLocalState(state);
+          render(state);
+          closeSettings();
+          showToast('Configuration saved.', 'success');
+
+          if (scriptUrl) {
+            if (state.readings.length === 0) {
+              state = await pullStateFromCloud(state, { silent: false });
+              render(state);
+            } else {
+              await pushStateToCloud(state, { silent: false });
+            }
+          }
+        });
+
+        document.getElementById('btnPullCloud').addEventListener('click', async () => {
+          const url = document.getElementById('cfgScriptUrl').value.trim();
+          const secret = document.getElementById('cfgSyncSecret').value;
+          if (!url) {
+            showToast('Paste your Google Apps Script Web App URL first.', 'error');
+            return;
+          }
+          saveCloudConfig({ ...loadCloudConfig(), scriptUrl: url, secret });
+          state = await pullStateFromCloud(state, { silent: false, forceOverwrite: true });
+          render(state);
+          closeSettings();
+        });
+
+        document.getElementById('btnPushCloud').addEventListener('click', async () => {
+          const url = document.getElementById('cfgScriptUrl').value.trim();
+          const secret = document.getElementById('cfgSyncSecret').value;
+          if (!url) {
+            showToast('Paste your Google Apps Script Web App URL first.', 'error');
+            return;
+          }
+          saveCloudConfig({ ...loadCloudConfig(), scriptUrl: url, secret });
+          await pushStateToCloud(state, { silent: false });
+          render(state);
+        });
+
+        document.getElementById('btnSyncNow').addEventListener('click', async () => {
+          const cloudCfg = loadCloudConfig();
+          if (!cloudCfg.scriptUrl) {
+            openSettings();
+            return;
+          }
+          if (cloudCfg.pendingPush) {
+            await pushStateToCloud(state, { silent: false });
+          } else {
+            state = await pullStateFromCloud(state, { silent: false });
+          }
+          render(state);
+        });
+
+        window.addEventListener('online', async () => {
+          const cloudCfg = loadCloudConfig();
+          if (cloudCfg.scriptUrl && cloudCfg.pendingPush) {
+            await pushStateToCloud(state, { silent: false });
+          }
+        });
+        window.addEventListener('offline', () => updateSyncUI('error'));
+
+        // Export & Import Handlers
+        document.getElementById('btnExportCsv').addEventListener('click', () => exportCSV(state));
+        document.getElementById('btnExportJson').addEventListener('click', () => exportJSON(state));
+        document.getElementById('btnImportJson').addEventListener('click', () => {
+          document.getElementById('importJsonFile').click();
+        });
+        document.getElementById('importJsonFile').addEventListener('change', (e) => {
+          const file = e.target.files?.[0];
+          if (!file) return;
+          const reader = new FileReader();
+          reader.onload = async () => {
+            try {
+              const imported = sanitizeState(JSON.parse(String(reader.result || '{}')));
+              state = imported;
+              saveLocalState(state);
+              render(state);
+              showToast(`Imported ${state.readings.length} readings from backup.`, 'success');
+              await pushStateToCloud(state, { silent: true });
+            } catch (err) {
+              showToast('Invalid JSON backup file.', 'error');
+            } finally {
+              e.target.value = '';
+            }
+          };
+          reader.readAsText(file);
+        });
+
+        document.getElementById('toastClose').addEventListener('click', () => {
+          document.getElementById('toastBanner').classList.add('hidden');
+        });
+
+        // Initial render + background cloud sync
+        render(state);
+        const cloudCfg = loadCloudConfig();
+        if (cloudCfg.scriptUrl && navigator.onLine) {
+          if (cloudCfg.pendingPush) {
+            await pushStateToCloud(state, { silent: true });
+          } else {
+            state = await pullStateFromCloud(state, { silent: true });
+            render(state);
+          }
+        }
+      });
+    })();
+  </script>
+</body>
+</html>
